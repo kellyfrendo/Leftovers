@@ -1,9 +1,7 @@
 {
   "name": "leftovers",
   "private": true,
-  "type": "module",
   "scripts": {
-    "config": "node scripts/generate-config.js",
     "serve": "python3 -m http.server 8080"
   }
 }

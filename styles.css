@@ -37,12 +37,14 @@ body {
     radial-gradient(ellipse at bottom right, #e0f2fe 0%, transparent 45%),
     var(--bg);
   line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
 }
 
 .app {
   max-width: 960px;
   margin: 0 auto;
-  padding: 2rem 1.25rem 3rem;
+  padding: max(2rem, env(safe-area-inset-top)) max(1.25rem, env(safe-area-inset-right))
+    max(3rem, env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
 }
 
 .header {
@@ -208,6 +210,21 @@ body {
   .main {
     grid-template-columns: 1fr 1.2fr;
     align-items: start;
+  }
+}
+
+@media (max-width: 767px) {
+  .header h1 {
+    font-size: 1.5rem;
+  }
+
+  .btn,
+  .filter-btn {
+    min-height: 44px;
+  }
+
+  .card__remove {
+    min-width: 72px;
   }
 }
 

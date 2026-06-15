@@ -2,8 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Leftovers" />
+    <meta name="theme-color" content="#2b6cb0" />
     <title>Leftovers — Fridge Tracker</title>
+    <link rel="manifest" href="manifest.json" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,53 +17,7 @@
     />
   </head>
   <body>
-    <div id="loading-screen" class="screen screen--center hidden">
-      <p class="screen__icon" aria-hidden="true">🧊</p>
-      <p>Loading your fridge…</p>
-    </div>
-
-    <div id="config-screen" class="screen screen--center hidden">
-      <div class="panel panel--narrow">
-        <h2>Setup required</h2>
-        <p>
-          Connect this app to Supabase before use. Copy
-          <code>config.example.js</code> to <code>config.js</code> and add your project URL and
-          anon key, or set environment variables when deploying.
-        </p>
-        <p class="screen__hint">See <code>README.md</code> for full setup steps.</p>
-      </div>
-    </div>
-
-    <div id="auth-screen" class="screen screen--center hidden">
-      <div class="panel panel--narrow">
-        <p class="screen__icon" aria-hidden="true">🧊</p>
-        <h2 id="auth-heading">Sign in</h2>
-        <p class="screen__subtitle">Sign in to sync your fridge across devices.</p>
-        <form id="auth-form" class="form">
-          <label class="field">
-            <span class="field__label">Email</span>
-            <input type="email" id="auth-email" required autocomplete="email" />
-          </label>
-          <label class="field">
-            <span class="field__label">Password</span>
-            <input
-              type="password"
-              id="auth-password"
-              required
-              minlength="6"
-              autocomplete="current-password"
-            />
-          </label>
-          <p id="auth-error" class="form__error" role="alert"></p>
-          <button type="submit" id="auth-submit" class="btn btn--primary">Sign in</button>
-        </form>
-        <button type="button" id="auth-toggle" class="btn btn--link">
-          Need an account? Sign up
-        </button>
-      </div>
-    </div>
-
-    <div id="app-screen" class="app hidden">
+    <div class="app">
       <header class="header">
         <div class="header__brand">
           <span class="header__icon" aria-hidden="true">🧊</span>
@@ -68,13 +26,7 @@
             <p class="header__tagline">Know what's in your fridge and when to eat it</p>
           </div>
         </div>
-        <div class="header__actions">
-          <div class="header__stats" id="stats" aria-live="polite"></div>
-          <div class="header__user">
-            <span id="user-email" class="header__email"></span>
-            <button type="button" id="sign-out" class="btn btn--ghost btn--small">Sign out</button>
-          </div>
-        </div>
+        <div class="header__stats" id="stats" aria-live="polite"></div>
       </header>
 
       <main class="main">
@@ -166,6 +118,6 @@
       </main>
     </div>
 
-    <script type="module" src="app.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>

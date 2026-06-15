@@ -1,7 +1,4 @@
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
-
-const LEGACY_STORAGE_KEY = "leftovers-fridge";
+const STORAGE_KEY = "leftovers-fridge";
 
 const CATEGORIES = {
   "cooked-meal": { label: "Cooked meal", days: 4 },
@@ -13,29 +10,8 @@ const CATEGORIES = {
   other: { label: "Other", days: 4 },
 };
 
-const isConfigured =
-  SUPABASE_URL &&
-  SUPABASE_ANON_KEY &&
-  !SUPABASE_URL.includes("your-project") &&
-  SUPABASE_ANON_KEY !== "your-anon-key";
-
-let supabase = null;
-let leftovers = [];
+let leftovers = loadLeftovers();
 let activeFilter = "all";
-
-const loadingScreen = document.getElementById("loading-screen");
-const configScreen = document.getElementById("config-screen");
-const authScreen = document.getElementById("auth-screen");
-const appScreen = document.getElementById("app-screen");
-const authForm = document.getElementById("auth-form");
-const authEmail = document.getElementById("auth-email");
-const authPassword = document.getElementById("auth-password");
-const authSubmit = document.getElementById("auth-submit");
-const authToggle = document.getElementById("auth-toggle");
-const authError = document.getElementById("auth-error");
-const authHeading = document.getElementById("auth-heading");
-const signOutBtn = document.getElementById("sign-out");
-const userEmail = document.getElementById("user-email");
 
 const form = document.getElementById("add-form");
 const dateInput = document.getElementById("date");
@@ -48,22 +24,13 @@ const leftoverList = document.getElementById("leftover-list");
 const emptyState = document.getElementById("empty-state");
 const statsEl = document.getElementById("stats");
 const filterButtons = document.querySelectorAll(".filter-btn");
-const addSubmitBtn = form.querySelector('button[type="submit"]');
-
-let authMode = "sign-in";
 
 init();
 
-async function init() {
-  hideAllScreens();
-
-  if (!isConfigured) {
-    showScreen(configScreen);
-    return;
-  }
-
-  showScreen(loadingScreen);
-  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function init() {
+  dateInput.value = todayString();
+  updateEatByPreview();
+  render();
 
   form.addEventListener("submit", handleSubmit);
   dateInput.addEventListener("change", updateEatByPreview);
@@ -76,173 +43,19 @@ async function init() {
       render();
     });
   });
-
-  authForm.addEventListener("submit", handleAuthSubmit);
-  authToggle.addEventListener("click", toggleAuthMode);
-  signOutBtn.addEventListener("click", handleSignOut);
-
-  supabase.auth.onAuthStateChange((_event, session) => {
-    if (session) {
-      showApp(session.user);
-    } else {
-      showAuth();
-    }
-  });
-
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    await showApp(session.user);
-  } else {
-    showAuth();
-  }
 }
 
-function hideAllScreens() {
-  [loadingScreen, configScreen, authScreen, appScreen].forEach((el) => {
-    el.classList.add("hidden");
-  });
-}
-
-function showScreen(screen) {
-  hideAllScreens();
-  screen.classList.remove("hidden");
-}
-
-function showAuth() {
-  authError.textContent = "";
-  showScreen(authScreen);
-}
-
-async function showApp(user) {
-  userEmail.textContent = user.email;
-  dateInput.value = todayString();
-  updateEatByPreview();
-  showScreen(appScreen);
-  await loadLeftovers();
-  render();
-}
-
-function setAuthMode(mode) {
-  authMode = mode;
-  authHeading.textContent = authMode === "sign-in" ? "Sign in" : "Create account";
-  authSubmit.textContent = authMode === "sign-in" ? "Sign in" : "Create account";
-  authToggle.textContent =
-    authMode === "sign-in" ? "Need an account? Sign up" : "Already have an account? Sign in";
-  authError.textContent = "";
-}
-
-function toggleAuthMode(event) {
-  event.preventDefault();
-  setAuthMode(authMode === "sign-in" ? "sign-up" : "sign-in");
-}
-
-async function handleAuthSubmit(event) {
-  event.preventDefault();
-  authError.textContent = "";
-  authSubmit.disabled = true;
-
-  const email = authEmail.value.trim();
-  const password = authPassword.value;
-
-  const { error } =
-    authMode === "sign-in"
-      ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password });
-
-  authSubmit.disabled = false;
-
-  if (error) {
-    authError.textContent = error.message;
-    return;
-  }
-
-  if (authMode === "sign-up") {
-    authError.textContent = "Check your email to confirm your account, then sign in.";
-    setAuthMode("sign-in");
-  }
-}
-
-async function handleSignOut() {
-  await supabase.auth.signOut();
-}
-
-function fromRow(row) {
-  return {
-    id: row.id,
-    dateAdded: row.date_added,
-    description: row.description,
-    category: row.category,
-    container: row.container,
-    location: row.location,
-    eatBy: row.eat_by,
-  };
-}
-
-function toRow(item, userId) {
-  return {
-    user_id: userId,
-    date_added: item.dateAdded,
-    description: item.description,
-    category: item.category,
-    container: item.container,
-    location: item.location,
-    eat_by: item.eatBy,
-  };
-}
-
-async function loadLeftovers() {
-  const { data, error } = await supabase
-    .from("leftovers")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  leftovers = (data || []).map(fromRow);
-  await maybeImportLegacyData();
-}
-
-async function maybeImportLegacyData() {
-  if (leftovers.length > 0) return;
-
-  let legacy = [];
+function loadLeftovers() {
   try {
-    const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
-    legacy = raw ? JSON.parse(raw) : [];
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
   } catch {
-    return;
+    return [];
   }
+}
 
-  if (legacy.length === 0) return;
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-
-  const rows = legacy.map((item) =>
-    toRow(
-      {
-        dateAdded: item.dateAdded,
-        description: item.description,
-        category: item.category,
-        container: item.container,
-        location: item.location || "",
-        eatBy: item.eatBy,
-      },
-      user.id
-    )
-  );
-
-  const { error } = await supabase.from("leftovers").insert(rows);
-  if (error) {
-    console.error("Legacy import failed:", error);
-    return;
-  }
-
-  localStorage.removeItem(LEGACY_STORAGE_KEY);
-  await loadLeftovers();
+function saveLeftovers() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(leftovers));
 }
 
 function todayString() {
@@ -316,13 +129,11 @@ function updateEatByPreview() {
   eatByPreview.textContent = `Eat by ${formatDisplayDate(eatBy)} (${CATEGORIES[category].days} days for ${CATEGORIES[category].label.toLowerCase()})`;
 }
 
-async function handleSubmit(event) {
+function handleSubmit(event) {
   event.preventDefault();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-
   const item = {
+    id: crypto.randomUUID(),
     dateAdded: dateInput.value,
     description: descriptionInput.value.trim(),
     category: categoryInput.value,
@@ -331,22 +142,8 @@ async function handleSubmit(event) {
     eatBy: addDays(dateInput.value, CATEGORIES[categoryInput.value].days),
   };
 
-  addSubmitBtn.disabled = true;
-
-  const { data, error } = await supabase
-    .from("leftovers")
-    .insert(toRow(item, user.id))
-    .select()
-    .single();
-
-  addSubmitBtn.disabled = false;
-
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  leftovers.unshift(fromRow(data));
+  leftovers.unshift(item);
+  saveLeftovers();
 
   descriptionInput.value = "";
   containerInput.selectedIndex = 0;
@@ -357,13 +154,9 @@ async function handleSubmit(event) {
   descriptionInput.focus();
 }
 
-async function removeLeftover(id) {
-  const { error } = await supabase.from("leftovers").delete().eq("id", id);
-  if (error) {
-    console.error(error);
-    return;
-  }
+function removeLeftover(id) {
   leftovers = leftovers.filter((item) => item.id !== id);
+  saveLeftovers();
   render();
 }
 
