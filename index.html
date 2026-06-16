@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#2b6cb0" />
     <title>Leftovers — Fridge Tracker</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=2" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -18,81 +18,56 @@
   </head>
   <body>
     <div class="app">
-      <header class="header">
-        <div class="header__brand">
-          <span class="header__icon" aria-hidden="true">🧊</span>
-          <div>
-            <h1>Leftovers</h1>
-            <p class="header__tagline">Know what's in your fridge and when to eat it</p>
+      <section id="page-home" class="page">
+        <header class="home-header">
+          <span class="home-header__icon" aria-hidden="true">
+            <svg class="home-header__fridge" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+              <rect x="14" y="6" width="36" height="52" rx="5" fill="#e8f0f8" stroke="currentColor" stroke-width="2.5"/>
+              <line x1="14" y1="22" x2="50" y2="22" stroke="currentColor" stroke-width="2"/>
+              <rect x="42" y="10" width="3" height="8" rx="1.5" fill="currentColor"/>
+              <rect x="42" y="28" width="3" height="16" rx="1.5" fill="currentColor"/>
+              <line x1="18" y1="36" x2="38" y2="36" stroke="#b8c9d9" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="18" y1="46" x2="38" y2="46" stroke="#b8c9d9" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <h1>Hungry?</h1>
+          <p class="home-header__tagline">Our kitchen companion</p>
+        </header>
+
+        <nav class="home-nav" aria-label="Main menu">
+          <button type="button" class="home-nav__btn" data-page="fridge">
+            <span class="home-nav__icon" aria-hidden="true">🧊</span>
+            <span class="home-nav__label">What's In Our Fridge</span>
+            <span class="home-nav__desc">Browse by shelf and drawer</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="leftovers">
+            <span class="home-nav__icon" aria-hidden="true">🥡</span>
+            <span class="home-nav__label">View Leftovers</span>
+            <span class="home-nav__desc">Track dates, eat-by, and status</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="shopping">
+            <span class="home-nav__icon" aria-hidden="true">🛒</span>
+            <span class="home-nav__label">Shopping List</span>
+            <span class="home-nav__desc">Items to pick up at the store</span>
+          </button>
+          <button type="button" class="home-nav__btn home-nav__btn--settings" data-page="settings">
+            <span class="home-nav__icon" aria-hidden="true">⚙️</span>
+            <span class="home-nav__label">Settings</span>
+            <span class="home-nav__desc">Manage categories, containers, and locations</span>
+          </button>
+        </nav>
+      </section>
+
+      <section id="page-leftovers" class="page hidden">
+        <header class="page-header">
+          <div class="page-header__actions">
+            <button type="button" class="btn btn--back" data-page="home">← Home</button>
           </div>
-        </div>
-        <div class="header__stats" id="stats" aria-live="polite"></div>
-      </header>
-
-      <main class="main">
-        <section class="panel panel--form" aria-labelledby="add-heading">
-          <h2 id="add-heading">Add to fridge</h2>
-          <form id="add-form" class="form">
-            <div class="form__row">
-              <label class="field">
-                <span class="field__label">Date added</span>
-                <input type="date" id="date" name="date" required />
-              </label>
-              <label class="field">
-                <span class="field__label">Category</span>
-                <select id="category" name="category" required>
-                  <option value="cooked-meal">Cooked meal</option>
-                  <option value="meat-poultry">Meat & poultry</option>
-                  <option value="soup-stew">Soup & stew</option>
-                  <option value="vegetables">Vegetables</option>
-                  <option value="dairy">Dairy</option>
-                  <option value="seafood">Seafood</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
-            </div>
-
-            <label class="field">
-              <span class="field__label">Description</span>
-              <input
-                type="text"
-                id="description"
-                name="description"
-                placeholder="e.g. Chicken stir-fry, leftover pasta"
-                required
-                maxlength="120"
-              />
-            </label>
-
-            <div class="form__row">
-              <label class="field">
-                <span class="field__label">Container</span>
-                <select id="container" name="container" required>
-                  <option value="Glass jar">Glass jar</option>
-                  <option value="Square tub">Square tub</option>
-                  <option value="Glass container">Glass container</option>
-                  <option value="Other">Other</option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="field__label">Location</span>
-                <select id="location" name="location" required>
-                  <option value="Top shelf">Top shelf</option>
-                  <option value="Middle shelf">Middle shelf</option>
-                  <option value="Bottom shelf">Bottom shelf</option>
-                  <option value="Fiambre drawer">Fiambre drawer</option>
-                  <option value="Left drawer">Left drawer</option>
-                  <option value="Right drawer">Right drawer</option>
-                  <option value="Door">Door</option>
-                </select>
-              </label>
-            </div>
-
-            <p class="form__hint" id="eat-by-preview"></p>
-
-            <button type="submit" class="btn btn--primary">Add to fridge</button>
-          </form>
-        </section>
+          <div class="page-header__title">
+            <h1>View Leftovers</h1>
+            <div class="header__stats" id="stats" aria-live="polite"></div>
+          </div>
+        </header>
 
         <section class="panel panel--list" aria-labelledby="fridge-heading">
           <div class="panel__toolbar">
@@ -110,14 +85,213 @@
           <div id="empty-state" class="empty-state hidden">
             <p class="empty-state__icon" aria-hidden="true">🥡</p>
             <p class="empty-state__title">Your fridge is empty</p>
-            <p class="empty-state__text">Add your first leftover above to start tracking.</p>
+            <p class="empty-state__text">Add cooked meals from the home menu.</p>
           </div>
 
           <ul id="leftover-list" class="leftover-list" aria-live="polite"></ul>
         </section>
-      </main>
+      </section>
+
+      <section id="page-add" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" id="add-back">← Back</button>
+          <div class="page-header__title">
+            <h1>Add to fridge</h1>
+          </div>
+        </header>
+
+        <section class="panel panel--form" aria-labelledby="add-heading">
+          <h2 id="add-heading" class="visually-hidden">Add to fridge</h2>
+          <form id="add-form" class="form">
+            <div class="form__row">
+              <label class="field">
+                <span class="field__label">Date added</span>
+                <input type="date" id="date" name="date" required />
+              </label>
+              <label class="field">
+                <span class="field__label">Category</span>
+                <select id="category" name="category" required></select>
+              </label>
+            </div>
+
+            <label class="field">
+              <span class="field__label">Description</span>
+              <input
+                type="text"
+                id="description"
+                name="description"
+                list="description-presets-datalist"
+                placeholder="e.g. Water, Chicken stir-fry"
+                required
+                maxlength="120"
+              />
+              <datalist id="description-presets-datalist"></datalist>
+            </label>
+
+            <label class="field field--narrow">
+              <span class="field__label">Quantity</span>
+              <select id="quantity" name="quantity" required>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10</option>
+              </select>
+            </label>
+
+            <div class="form__row">
+              <label class="field">
+                <span class="field__label">Container</span>
+                <select id="container" name="container" required></select>
+              </label>
+              <label class="field">
+                <span class="field__label">Location</span>
+                <select id="location" name="location" required></select>
+              </label>
+            </div>
+
+            <p class="form__hint" id="eat-by-preview"></p>
+
+            <button type="submit" class="btn btn--primary">Add to fridge</button>
+          </form>
+        </section>
+      </section>
+
+      <section id="page-fridge" class="page hidden">
+        <header class="page-header">
+          <div class="page-header__actions">
+            <button type="button" class="btn btn--back" data-page="home">← Home</button>
+            <button type="button" class="btn btn--primary btn--small" data-page="add" data-return="fridge">
+              Add Item
+            </button>
+          </div>
+          <div class="page-header__title">
+            <h1>What's In Our Fridge</h1>
+            <p class="page-header__subtitle" id="fridge-summary"></p>
+          </div>
+        </header>
+
+        <div id="fridge-filters-panel" class="panel fridge-filters hidden">
+          <div class="fridge-filters__header">
+            <h2 class="fridge-filters__title">Show categories</h2>
+            <button type="button" id="fridge-show-all" class="btn btn--primary btn--small fridge-filters__show-all">
+              Show All
+            </button>
+          </div>
+          <div id="fridge-category-filters" class="filters" role="group" aria-label="Filter by category"></div>
+        </div>
+
+        <div id="fridge-empty" class="empty-state hidden">
+          <p class="empty-state__icon" aria-hidden="true">🧊</p>
+          <p class="empty-state__title">Nothing in the fridge yet</p>
+          <p class="empty-state__text">Tap Add Item to add your first leftover.</p>
+        </div>
+
+        <div id="fridge-filter-empty" class="empty-state hidden">
+          <p class="empty-state__icon" aria-hidden="true">🔍</p>
+          <p class="empty-state__title">No items match these filters</p>
+          <p class="empty-state__text">Turn a category back on above to see those items.</p>
+        </div>
+
+        <div id="fridge-by-location" class="fridge-locations" aria-live="polite"></div>
+      </section>
+
+      <section id="page-shopping" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="home">← Home</button>
+          <div class="page-header__title">
+            <h1>Shopping List</h1>
+          </div>
+        </header>
+
+        <section class="panel">
+          <form id="shopping-form" class="form shopping-form">
+            <label class="field">
+              <span class="field__label">Add item</span>
+              <div class="shopping-form__row">
+                <input
+                  type="text"
+                  id="shopping-input"
+                  placeholder="e.g. Milk, eggs, bread"
+                  required
+                  maxlength="80"
+                />
+                <button type="submit" class="btn btn--primary">Add</button>
+              </div>
+            </label>
+          </form>
+
+          <div id="shopping-empty" class="empty-state hidden">
+            <p class="empty-state__icon" aria-hidden="true">🛒</p>
+            <p class="empty-state__title">List is empty</p>
+            <p class="empty-state__text">Add items you need from the store.</p>
+          </div>
+
+          <ul id="shopping-list" class="shopping-list" aria-live="polite"></ul>
+        </section>
+      </section>
+
+      <section id="page-settings" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="home">← Home</button>
+          <div class="page-header__title">
+            <h1>Settings</h1>
+            <p class="page-header__subtitle">Manage dropdown options for the app</p>
+          </div>
+        </header>
+
+        <div class="settings-sections">
+          <section class="panel settings-section" aria-labelledby="settings-categories-heading">
+            <h2 id="settings-categories-heading">Category</h2>
+            <p class="settings-section__hint">Includes days in fridge for eat-by dates.</p>
+            <ul id="settings-categories-list" class="settings-list"></ul>
+            <form id="settings-categories-add" class="settings-add-form" data-setting-type="categories">
+              <input type="text" name="label" placeholder="Category name" required maxlength="60" />
+              <input type="number" name="days" placeholder="Days" min="1" max="30" value="4" required aria-label="Days in fridge" />
+              <button type="submit" class="btn btn--primary btn--small">Add</button>
+            </form>
+          </section>
+
+          <section class="panel settings-section" aria-labelledby="settings-containers-heading">
+            <h2 id="settings-containers-heading">Container</h2>
+            <ul id="settings-containers-list" class="settings-list"></ul>
+            <form id="settings-containers-add" class="settings-add-form" data-setting-type="containers">
+              <input type="text" name="label" placeholder="Container name" required maxlength="60" />
+              <button type="submit" class="btn btn--primary btn--small">Add</button>
+            </form>
+          </section>
+
+          <section class="panel settings-section" aria-labelledby="settings-locations-heading">
+            <h2 id="settings-locations-heading">Location</h2>
+            <ul id="settings-locations-list" class="settings-list"></ul>
+            <form id="settings-locations-add" class="settings-add-form" data-setting-type="locations">
+              <input type="text" name="label" placeholder="Location name" required maxlength="60" />
+              <button type="submit" class="btn btn--primary btn--small">Add</button>
+            </form>
+          </section>
+
+          <section class="panel settings-section" aria-labelledby="settings-presets-heading">
+            <h2 id="settings-presets-heading">Food shortcuts</h2>
+            <p class="settings-section__hint">
+              Match a description when adding items to fill in category and location automatically.
+            </p>
+            <ul id="settings-presets-list" class="settings-list"></ul>
+            <form id="settings-presets-add" class="settings-preset-add-form">
+              <input type="text" name="description" placeholder="Description e.g. Water" required maxlength="120" />
+              <select name="categoryId" required aria-label="Default category"></select>
+              <select name="location" required aria-label="Default location"></select>
+              <button type="submit" class="btn btn--primary btn--small">Add</button>
+            </form>
+          </section>
+        </div>
+      </section>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=2"></script>
   </body>
 </html>

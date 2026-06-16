@@ -1,22 +1,62 @@
 const STORAGE_KEY = "leftovers-fridge";
+const SHOPPING_STORAGE_KEY = "leftovers-shopping";
+const SETTINGS_STORAGE_KEY = "leftovers-settings";
 
-const CATEGORIES = {
-  "cooked-meal": { label: "Cooked meal", days: 4 },
-  "meat-poultry": { label: "Meat & poultry", days: 3 },
-  "soup-stew": { label: "Soup & stew", days: 4 },
-  vegetables: { label: "Vegetables", days: 5 },
-  dairy: { label: "Dairy", days: 5 },
-  seafood: { label: "Seafood", days: 2 },
-  other: { label: "Other", days: 4 },
+const DEFAULT_SETTINGS = {
+  categories: [
+    { id: "cooked-meal", label: "Cooked meal", days: 4 },
+    { id: "drinks", label: "Drinks", days: 5 },
+    { id: "meat-poultry", label: "Meat & poultry", days: 3 },
+    { id: "soup-stew", label: "Soup & stew", days: 4 },
+    { id: "vegetables", label: "Vegetables", days: 5 },
+    { id: "dairy", label: "Dairy", days: 5 },
+    { id: "seafood", label: "Seafood", days: 2 },
+    { id: "other", label: "Other", days: 4 },
+  ],
+  containers: [
+    { id: "glass-jar", label: "Glass jar" },
+    { id: "square-tub", label: "Square tub" },
+    { id: "glass-container", label: "Glass container" },
+    { id: "other", label: "Other" },
+  ],
+  locations: [
+    { id: "top-shelf", label: "Top shelf" },
+    { id: "middle-shelf", label: "Middle shelf" },
+    { id: "bottom-shelf", label: "Bottom shelf" },
+    { id: "fiambre-drawer", label: "Fiambre drawer" },
+    { id: "left-drawer", label: "Left drawer" },
+    { id: "right-drawer", label: "Right drawer" },
+    { id: "door", label: "Door" },
+  ],
+  presets: [],
 };
 
+const LEFTOVERS_PAGE_CATEGORY_IDS = new Set(["cooked-meal"]);
+
+const PAGES = {
+  home: document.getElementById("page-home"),
+  leftovers: document.getElementById("page-leftovers"),
+  add: document.getElementById("page-add"),
+  fridge: document.getElementById("page-fridge"),
+  shopping: document.getElementById("page-shopping"),
+  settings: document.getElementById("page-settings"),
+};
+
+let settings = loadSettings();
 let leftovers = loadLeftovers();
+let shoppingItems = loadShopping();
 let activeFilter = "all";
+let fridgeExcludedCategories = new Set();
+let currentPage = "home";
+let returnPage = "leftovers";
+let settingsEdit = { type: null, id: null };
 
 const form = document.getElementById("add-form");
+const addBackBtn = document.getElementById("add-back");
 const dateInput = document.getElementById("date");
 const categoryInput = document.getElementById("category");
 const descriptionInput = document.getElementById("description");
+const quantityInput = document.getElementById("quantity");
 const containerInput = document.getElementById("container");
 const locationInput = document.getElementById("location");
 const eatByPreview = document.getElementById("eat-by-preview");
@@ -24,25 +64,260 @@ const leftoverList = document.getElementById("leftover-list");
 const emptyState = document.getElementById("empty-state");
 const statsEl = document.getElementById("stats");
 const filterButtons = document.querySelectorAll(".filter-btn");
+const fridgeByLocation = document.getElementById("fridge-by-location");
+const fridgeEmpty = document.getElementById("fridge-empty");
+const fridgeSummary = document.getElementById("fridge-summary");
+const fridgeFiltersPanel = document.getElementById("fridge-filters-panel");
+const fridgeCategoryFilters = document.getElementById("fridge-category-filters");
+const fridgeShowAllBtn = document.getElementById("fridge-show-all");
+const fridgeFilterEmpty = document.getElementById("fridge-filter-empty");
+const shoppingForm = document.getElementById("shopping-form");
+const shoppingInput = document.getElementById("shopping-input");
+const shoppingList = document.getElementById("shopping-list");
+const shoppingEmpty = document.getElementById("shopping-empty");
+
+const SETTINGS_LISTS = {
+  categories: document.getElementById("settings-categories-list"),
+  containers: document.getElementById("settings-containers-list"),
+  locations: document.getElementById("settings-locations-list"),
+  presets: document.getElementById("settings-presets-list"),
+};
+
+const settingsPresetsAddForm = document.getElementById("settings-presets-add");
+const descriptionPresetsDatalist = document.getElementById("description-presets-datalist");
 
 init();
 
 function init() {
   dateInput.value = todayString();
+  populateDropdowns();
+  updateDescriptionDatalist();
   updateEatByPreview();
-  render();
+
+  document.querySelectorAll("[data-page]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.page === "add" && btn.dataset.return) {
+        returnPage = btn.dataset.return;
+      }
+      navigateTo(btn.dataset.page);
+    });
+  });
+
+  addBackBtn.addEventListener("click", () => navigateTo(returnPage));
 
   form.addEventListener("submit", handleSubmit);
   dateInput.addEventListener("change", updateEatByPreview);
   categoryInput.addEventListener("change", updateEatByPreview);
+  descriptionInput.addEventListener("input", () => applyPresetForDescription(descriptionInput.value));
+  descriptionInput.addEventListener("change", () => applyPresetForDescription(descriptionInput.value));
 
   filterButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
       activeFilter = btn.dataset.filter;
       filterButtons.forEach((b) => b.classList.toggle("filter-btn--active", b === btn));
-      render();
+      renderLeftovers();
     });
   });
+
+  shoppingForm.addEventListener("submit", handleShoppingSubmit);
+
+  fridgeShowAllBtn.addEventListener("click", () => {
+    fridgeExcludedCategories.clear();
+    renderFridgeOverview();
+  });
+
+  document.querySelectorAll(".settings-add-form").forEach((addForm) => {
+    addForm.addEventListener("submit", handleSettingsAdd);
+  });
+
+  settingsPresetsAddForm.addEventListener("submit", handlePresetAdd);
+
+  stripLeftoversAddButton();
+  navigateTo("home");
+}
+
+function stripLeftoversAddButton() {
+  PAGES.leftovers?.querySelectorAll('[data-page="add"]').forEach((btn) => btn.remove());
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return structuredClone(DEFAULT_SETTINGS);
+    const parsed = JSON.parse(raw);
+    const categories = parsed.categories?.length
+      ? mergeDefaultCategories(parsed.categories)
+      : structuredClone(DEFAULT_SETTINGS.categories);
+    const result = {
+      categories,
+      containers: parsed.containers?.length ? parsed.containers : structuredClone(DEFAULT_SETTINGS.containers),
+      locations: parsed.locations?.length ? parsed.locations : structuredClone(DEFAULT_SETTINGS.locations),
+      presets: Array.isArray(parsed.presets) ? parsed.presets : [],
+    };
+    if (parsed.categories?.length && categories.length !== parsed.categories.length) {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(result));
+    }
+    return result;
+  } catch {
+    return structuredClone(DEFAULT_SETTINGS);
+  }
+}
+
+function mergeDefaultCategories(categories) {
+  const merged = [...categories];
+  DEFAULT_SETTINGS.categories.forEach((def) => {
+    if (!merged.some((item) => item.id === def.id)) {
+      merged.push({ ...def });
+    }
+  });
+  return merged;
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  populateDropdowns();
+  updateDescriptionDatalist();
+}
+
+function categoryOptionsHtml(selectedId) {
+  return settings.categories
+    .map(
+      (cat) =>
+        `<option value="${escapeHtml(cat.id)}"${cat.id === selectedId ? " selected" : ""}>${escapeHtml(cat.label)}</option>`
+    )
+    .join("");
+}
+
+function locationOptionsHtml(selectedLabel) {
+  return settings.locations
+    .map(
+      (loc) =>
+        `<option value="${escapeHtml(loc.label)}"${loc.label === selectedLabel ? " selected" : ""}>${escapeHtml(loc.label)}</option>`
+    )
+    .join("");
+}
+
+function findPresetByDescription(text) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return null;
+  return settings.presets.find((preset) => preset.description.toLowerCase() === normalized);
+}
+
+function applyPresetForDescription(text) {
+  const preset = findPresetByDescription(text);
+  if (!preset) return;
+
+  if (settings.categories.some((cat) => cat.id === preset.categoryId)) {
+    categoryInput.value = preset.categoryId;
+  }
+  if (settings.locations.some((loc) => loc.label === preset.location)) {
+    locationInput.value = preset.location;
+  }
+  updateEatByPreview();
+}
+
+function updateDescriptionDatalist() {
+  if (!descriptionPresetsDatalist) return;
+  descriptionPresetsDatalist.innerHTML = settings.presets
+    .map((preset) => `<option value="${escapeHtml(preset.description)}"></option>`)
+    .join("");
+}
+
+function populatePresetFormSelects(form) {
+  const categorySelect = form.categoryId;
+  const locationSelect = form.location;
+  if (categorySelect) {
+    categorySelect.innerHTML = categoryOptionsHtml(categorySelect.value || settings.categories[0]?.id);
+  }
+  if (locationSelect) {
+    locationSelect.innerHTML = locationOptionsHtml(locationSelect.value || settings.locations[0]?.label);
+  }
+}
+
+function getCategoryById(id) {
+  return settings.categories.find((item) => item.id === id);
+}
+
+function getCategoryLabel(id) {
+  return getCategoryById(id)?.label || id;
+}
+
+function getCategoryDays(id) {
+  return getCategoryById(id)?.days ?? 4;
+}
+
+function getLocationLabels() {
+  return settings.locations.map((item) => item.label);
+}
+
+function getOrderedLocationLabels() {
+  const labels = getLocationLabels();
+  const extras = [...new Set(leftovers.map((item) => item.location).filter((loc) => loc && !labels.includes(loc)))];
+  return [...labels, ...extras];
+}
+
+function populateDropdowns() {
+  fillSelect(categoryInput, settings.categories, (item) => item.id, (item) => item.label);
+  fillSelect(containerInput, settings.containers, (item) => item.label, (item) => item.label);
+  fillSelect(locationInput, settings.locations, (item) => item.label, (item) => item.label);
+}
+
+function fillSelect(select, items, getValue, getLabel) {
+  const current = select.value;
+  select.innerHTML = items
+    .map((item) => `<option value="${escapeHtml(getValue(item))}">${escapeHtml(getLabel(item))}</option>`)
+    .join("");
+  if (current && [...select.options].some((opt) => opt.value === current)) {
+    select.value = current;
+  }
+}
+
+function slugify(text) {
+  const base = text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return base || "item";
+}
+
+function uniqueId(type, label) {
+  let id = slugify(label);
+  let n = 1;
+  while (settings[type].some((item) => item.id === id)) {
+    id = `${slugify(label)}-${n++}`;
+  }
+  return id;
+}
+
+function countLeftoversUsing(type, value) {
+  if (type === "categories") return leftovers.filter((item) => item.category === value).length;
+  if (type === "containers") return leftovers.filter((item) => item.container === value).length;
+  if (type === "locations") return leftovers.filter((item) => item.location === value).length;
+  return 0;
+}
+
+function navigateTo(page) {
+  currentPage = page;
+
+  Object.entries(PAGES).forEach(([name, el]) => {
+    el.classList.toggle("hidden", name !== page);
+  });
+
+  if (page === "leftovers") {
+    stripLeftoversAddButton();
+    renderLeftovers();
+  }
+  if (page === "fridge") renderFridgeOverview();
+  if (page === "shopping") renderShopping();
+  if (page === "settings") renderSettings();
+  if (page === "add") {
+    populateDropdowns();
+    updateDescriptionDatalist();
+    dateInput.value = todayString();
+    updateEatByPreview();
+    descriptionInput.focus();
+  }
 }
 
 function loadLeftovers() {
@@ -56,6 +331,19 @@ function loadLeftovers() {
 
 function saveLeftovers() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(leftovers));
+}
+
+function loadShopping() {
+  try {
+    const raw = localStorage.getItem(SHOPPING_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveShopping() {
+  localStorage.setItem(SHOPPING_STORAGE_KEY, JSON.stringify(shoppingItems));
 }
 
 function todayString() {
@@ -125,8 +413,23 @@ function updateEatByPreview() {
     eatByPreview.textContent = "";
     return;
   }
-  const eatBy = addDays(date, CATEGORIES[category].days);
-  eatByPreview.textContent = `Eat by ${formatDisplayDate(eatBy)} (${CATEGORIES[category].days} days for ${CATEGORIES[category].label.toLowerCase()})`;
+  const days = getCategoryDays(category);
+  const eatBy = addDays(date, days);
+  eatByPreview.textContent = `Eat by ${formatDisplayDate(eatBy)} (${days} days for ${getCategoryLabel(category).toLowerCase()})`;
+}
+
+function getItemQuantity(item) {
+  return item.quantity || 1;
+}
+
+function formatItemDescription(item) {
+  const qty = getItemQuantity(item);
+  const name = escapeHtml(item.description);
+  return qty > 1 ? `${name} <span class="item-qty">×${qty}</span>` : name;
+}
+
+function formatFridgeItemLabel(item) {
+  return `${escapeHtml(item.description)} (${getItemQuantity(item)})`;
 }
 
 function handleSubmit(event) {
@@ -136,32 +439,97 @@ function handleSubmit(event) {
     id: crypto.randomUUID(),
     dateAdded: dateInput.value,
     description: descriptionInput.value.trim(),
+    quantity: Number(quantityInput.value),
     category: categoryInput.value,
     container: containerInput.value,
     location: locationInput.value,
-    eatBy: addDays(dateInput.value, CATEGORIES[categoryInput.value].days),
+    eatBy: addDays(dateInput.value, getCategoryDays(categoryInput.value)),
   };
 
   leftovers.unshift(item);
   saveLeftovers();
 
   descriptionInput.value = "";
+  quantityInput.value = "1";
   containerInput.selectedIndex = 0;
   locationInput.selectedIndex = 0;
   dateInput.value = todayString();
   updateEatByPreview();
-  render();
-  descriptionInput.focus();
+  navigateTo(returnPage);
 }
 
 function removeLeftover(id) {
   leftovers = leftovers.filter((item) => item.id !== id);
   saveLeftovers();
-  render();
+  if (currentPage === "leftovers") renderLeftovers();
+  if (currentPage === "fridge") renderFridgeOverview();
+}
+
+function reduceLeftoverQuantity(id) {
+  const item = leftovers.find((entry) => entry.id === id);
+  if (!item) return;
+
+  const nextQty = getItemQuantity(item) - 1;
+  if (nextQty <= 0) {
+    const description = item.description;
+    removeLeftover(id);
+    if (confirm(`Add "${description}" to your Shopping List?`)) {
+      addToShoppingList(description);
+    }
+    return;
+  }
+
+  item.quantity = nextQty;
+  saveLeftovers();
+  if (currentPage === "leftovers") renderLeftovers();
+  if (currentPage === "fridge") renderFridgeOverview();
+}
+
+function increaseLeftoverQuantity(id) {
+  const item = leftovers.find((entry) => entry.id === id);
+  if (!item) return;
+
+  const nextQty = Math.min(getItemQuantity(item) + 1, 10);
+  if (nextQty === getItemQuantity(item)) return;
+
+  item.quantity = nextQty;
+  saveLeftovers();
+  if (currentPage === "leftovers") renderLeftovers();
+  if (currentPage === "fridge") renderFridgeOverview();
+}
+
+function relocateLeftover(id, newLocation) {
+  const item = leftovers.find((entry) => entry.id === id);
+  if (!item || item.location === newLocation) return;
+  item.location = newLocation;
+  saveLeftovers();
+  if (currentPage === "leftovers") renderLeftovers();
+  if (currentPage === "fridge") renderFridgeOverview();
+}
+
+function locationSelectHtml(itemId, currentLocation, className) {
+  const labels = getOrderedLocationLabels();
+  const options = labels
+    .map(
+      (loc) =>
+        `<option value="${escapeHtml(loc)}"${loc === currentLocation ? " selected" : ""}>${escapeHtml(loc)}</option>`
+    )
+    .join("");
+  return `<select class="${className}" data-id="${itemId}" aria-label="Move to location">${options}</select>`;
+}
+
+function bindLocationSelects(container, selector) {
+  container.querySelectorAll(selector).forEach((select) => {
+    select.addEventListener("change", () => relocateLeftover(select.dataset.id, select.value));
+  });
+}
+
+function getLeftoversPageItems() {
+  return leftovers.filter((item) => LEFTOVERS_PAGE_CATEGORY_IDS.has(item.category));
 }
 
 function getFilteredLeftovers() {
-  const sorted = [...leftovers].sort((a, b) => {
+  const sorted = [...getLeftoversPageItems()].sort((a, b) => {
     const statusOrder = { overdue: 0, soon: 1, fresh: 2 };
     const statusA = getStatus(a.eatBy);
     const statusB = getStatus(b.eatBy);
@@ -176,12 +544,13 @@ function getFilteredLeftovers() {
 }
 
 function renderStats() {
+  const pageItems = getLeftoversPageItems();
   const counts = { fresh: 0, soon: 0, overdue: 0 };
-  leftovers.forEach((item) => {
+  pageItems.forEach((item) => {
     counts[getStatus(item.eatBy)] += 1;
   });
 
-  if (leftovers.length === 0) {
+  if (pageItems.length === 0) {
     statsEl.innerHTML = "";
     return;
   }
@@ -193,15 +562,25 @@ function renderStats() {
   `;
 }
 
-function render() {
+function renderLeftovers() {
   renderStats();
+  const pageItems = getLeftoversPageItems();
   const filtered = getFilteredLeftovers();
 
-  emptyState.classList.toggle("hidden", filtered.length > 0 || leftovers.length === 0);
+  emptyState.classList.toggle("hidden", filtered.length > 0 || pageItems.length === 0);
   leftoverList.classList.toggle("hidden", filtered.length === 0);
 
-  if (leftovers.length === 0) {
+  if (pageItems.length === 0) {
     emptyState.classList.remove("hidden");
+    const title = emptyState.querySelector(".empty-state__title");
+    const text = emptyState.querySelector(".empty-state__text");
+    if (leftovers.length === 0) {
+      title.textContent = "Your fridge is empty";
+      text.textContent = "Add cooked meals from the home menu.";
+    } else {
+      title.textContent = "No cooked meals";
+      text.textContent = "Only cooked meals appear here. Add a cooked meal to track it.";
+    }
     leftoverList.innerHTML = "";
     return;
   }
@@ -212,16 +591,17 @@ function render() {
     return;
   }
 
+  const defaultLocation = settings.locations[0]?.label || "";
+
   leftoverList.innerHTML = filtered
     .map((item) => {
       const status = getStatus(item.eatBy);
-      const category = CATEGORIES[item.category] || { label: item.category };
 
       return `
         <li class="card card--${status}">
           <div class="card__main">
             <div class="card__header">
-              <h3 class="card__title">${escapeHtml(item.description)}</h3>
+              <h3 class="card__title">${formatItemDescription(item)}</h3>
               <span class="badge badge--${status}">${statusLabel(status)}</span>
             </div>
             <dl class="card__meta">
@@ -234,8 +614,12 @@ function render() {
                 <dd class="card__eat-by">${formatDisplayDate(item.eatBy)}</dd>
               </div>
               <div>
+                <dt>Quantity</dt>
+                <dd>${getItemQuantity(item)}</dd>
+              </div>
+              <div>
                 <dt>Category</dt>
-                <dd>${category.label}</dd>
+                <dd>${escapeHtml(getCategoryLabel(item.category))}</dd>
               </div>
               <div>
                 <dt>Container</dt>
@@ -243,26 +627,538 @@ function render() {
               </div>
               <div>
                 <dt>Location</dt>
-                <dd>${escapeHtml(item.location || "—")}</dd>
+                <dd>${locationSelectHtml(item.id, item.location || defaultLocation, "card__location-select")}</dd>
               </div>
             </dl>
             <p class="card__countdown">${statusMessage(item.eatBy)}</p>
           </div>
           <button
             type="button"
-            class="btn btn--ghost card__remove"
+            class="btn btn--ghost card__reduce"
             data-id="${item.id}"
-            aria-label="Remove ${escapeHtml(item.description)}"
+            aria-label="Reduce ${escapeHtml(item.description)} quantity by 1"
           >
-            Ate it
+            −1
           </button>
         </li>
       `;
     })
     .join("");
 
-  leftoverList.querySelectorAll(".card__remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeLeftover(btn.dataset.id));
+  leftoverList.querySelectorAll(".card__reduce").forEach((btn) => {
+    btn.addEventListener("click", () => reduceLeftoverQuantity(btn.dataset.id));
+  });
+
+  bindLocationSelects(leftoverList, ".card__location-select");
+}
+
+function getFridgeVisibleLeftovers() {
+  return leftovers.filter((item) => {
+    const known = settings.categories.some((cat) => cat.id === item.category);
+    if (!known) return true;
+    return !fridgeExcludedCategories.has(item.category);
+  });
+}
+
+function renderFridgeCategoryFilters() {
+  fridgeCategoryFilters.innerHTML = settings.categories
+    .map((cat) => {
+      const included = !fridgeExcludedCategories.has(cat.id);
+      return `
+        <button
+          type="button"
+          class="filter-btn ${included ? "filter-btn--active" : ""}"
+          data-category="${cat.id}"
+          aria-pressed="${included}"
+        >
+          ${escapeHtml(cat.label)}
+        </button>
+      `;
+    })
+    .join("");
+
+  fridgeCategoryFilters.querySelectorAll("[data-category]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.category;
+      if (fridgeExcludedCategories.has(id)) {
+        fridgeExcludedCategories.delete(id);
+      } else {
+        fridgeExcludedCategories.add(id);
+      }
+      renderFridgeOverview();
+    });
+  });
+
+  const allIncluded = fridgeExcludedCategories.size === 0;
+  fridgeShowAllBtn.disabled = allIncluded;
+  fridgeShowAllBtn.setAttribute("aria-disabled", String(allIncluded));
+}
+
+function renderFridgeOverview() {
+  if (leftovers.length === 0) {
+    fridgeEmpty.classList.remove("hidden");
+    fridgeFiltersPanel.classList.add("hidden");
+    fridgeFilterEmpty.classList.add("hidden");
+    fridgeByLocation.innerHTML = "";
+    fridgeSummary.textContent = "";
+    return;
+  }
+
+  fridgeEmpty.classList.add("hidden");
+  fridgeFiltersPanel.classList.remove("hidden");
+  renderFridgeCategoryFilters();
+
+  const visible = getFridgeVisibleLeftovers();
+  fridgeSummary.textContent = `${visible.length} of ${leftovers.length} item${leftovers.length === 1 ? "" : "s"} shown`;
+
+  if (visible.length === 0) {
+    fridgeFilterEmpty.classList.remove("hidden");
+    fridgeByLocation.innerHTML = "";
+    return;
+  }
+
+  fridgeFilterEmpty.classList.add("hidden");
+
+  const byLocation = {};
+  visible.forEach((item) => {
+    const loc = item.location || "Unknown";
+    if (!byLocation[loc]) byLocation[loc] = [];
+    byLocation[loc].push(item);
+  });
+
+  const orderedLocations = getOrderedLocationLabels().filter((loc) => byLocation[loc]);
+
+  fridgeByLocation.innerHTML = orderedLocations
+    .map((location) => {
+      const items = byLocation[location].sort((a, b) => a.description.localeCompare(b.description));
+      return `
+        <section class="panel location-group">
+          <h2 class="location-group__title">${escapeHtml(location)}</h2>
+          <ul class="location-group__list">
+            ${items
+              .map((item) => {
+                const status = getStatus(item.eatBy);
+                return `
+                  <li class="location-item location-item--${status}">
+                    <details class="location-item__details">
+                      <summary class="location-item__summary">
+                        <span class="location-item__name">${formatFridgeItemLabel(item)}</span>
+                        <span class="location-item__chevron" aria-hidden="true">▼</span>
+                      </summary>
+                      <div class="location-item__body">
+                        <span class="location-item__detail">${escapeHtml(item.container)} · eat by ${formatDisplayDate(item.eatBy)} (${getItemQuantity(item)})</span>
+                        <label class="location-item__move">
+                          <span class="location-item__move-label">Move to</span>
+                          ${locationSelectHtml(item.id, item.location || location, "location-item__select")}
+                        </label>
+                        <div class="location-item__actions">
+                          <button
+                            type="button"
+                            class="btn btn--ghost location-item__reduce"
+                            data-id="${item.id}"
+                            aria-label="Reduce ${escapeHtml(item.description)} quantity by 1"
+                          >
+                            −1
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn--ghost location-item__increase"
+                            data-id="${item.id}"
+                            aria-label="Increase ${escapeHtml(item.description)} quantity by 1"
+                            ${getItemQuantity(item) >= 10 ? "disabled" : ""}
+                          >
+                            +1
+                          </button>
+                        </div>
+                      </div>
+                    </details>
+                  </li>
+                `;
+              })
+              .join("")}
+          </ul>
+        </section>
+      `;
+    })
+    .join("");
+
+  bindLocationSelects(fridgeByLocation, ".location-item__select");
+
+  fridgeByLocation.querySelectorAll(".location-item__reduce").forEach((btn) => {
+    btn.addEventListener("click", () => reduceLeftoverQuantity(btn.dataset.id));
+  });
+
+  fridgeByLocation.querySelectorAll(".location-item__increase").forEach((btn) => {
+    btn.addEventListener("click", () => increaseLeftoverQuantity(btn.dataset.id));
+  });
+}
+
+function renderSettings() {
+  renderSettingsList("categories");
+  renderSettingsList("containers");
+  renderSettingsList("locations");
+  renderPresetsList();
+  populatePresetFormSelects(settingsPresetsAddForm);
+}
+
+function renderPresetsList() {
+  const listEl = SETTINGS_LISTS.presets;
+  const items = settings.presets;
+
+  listEl.innerHTML = items
+    .map((item, index) => {
+      const isEditing = settingsEdit.type === "presets" && settingsEdit.id === item.id;
+      const categoryLabel = getCategoryLabel(item.categoryId);
+      const meta = `${escapeHtml(categoryLabel)} · ${escapeHtml(item.location)}`;
+
+      if (isEditing) {
+        return `
+          <li class="settings-item settings-item--editing">
+            <form class="settings-edit-form settings-preset-form" data-setting-type="presets" data-item-id="${item.id}">
+              <input type="text" name="description" value="${escapeHtml(item.description)}" required maxlength="120" />
+              <select name="categoryId" required>${categoryOptionsHtml(item.categoryId)}</select>
+              <select name="location" required>${locationOptionsHtml(item.location)}</select>
+              <div class="settings-item__actions">
+                <button type="submit" class="btn btn--primary btn--small">Save</button>
+                <button type="button" class="btn btn--ghost btn--small" data-action="cancel">Cancel</button>
+              </div>
+            </form>
+          </li>
+        `;
+      }
+
+      const canMoveUp = index > 0;
+      const canMoveDown = index < items.length - 1;
+
+      return `
+        <li class="settings-item">
+          <div class="settings-item__info">
+            <span class="settings-item__label">${escapeHtml(item.description)}</span>
+            <span class="settings-item__meta">${meta}</span>
+          </div>
+          <div class="settings-item__actions">
+            <button type="button" class="btn btn--ghost btn--small" data-action="up" data-setting-type="presets" data-item-id="${item.id}" ${canMoveUp ? "" : "disabled"} aria-label="Move up">↑</button>
+            <button type="button" class="btn btn--ghost btn--small" data-action="down" data-setting-type="presets" data-item-id="${item.id}" ${canMoveDown ? "" : "disabled"} aria-label="Move down">↓</button>
+            <button type="button" class="btn btn--ghost btn--small" data-action="edit" data-setting-type="presets" data-item-id="${item.id}">Edit</button>
+            <button type="button" class="btn btn--ghost btn--small" data-action="delete" data-setting-type="presets" data-item-id="${item.id}">Delete</button>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
+
+  listEl.querySelectorAll("[data-action]").forEach((btn) => {
+    btn.addEventListener("click", () => handleSettingsAction(btn));
+  });
+
+  listEl.querySelectorAll(".settings-edit-form").forEach((editForm) => {
+    editForm.addEventListener("submit", handleSettingsEditSave);
+    editForm.querySelector('[data-action="cancel"]')?.addEventListener("click", () => {
+      settingsEdit = { type: null, id: null };
+      renderSettings();
+    });
+  });
+}
+
+function handlePresetAdd(event) {
+  event.preventDefault();
+  const formEl = event.target;
+  const description = formEl.description.value.trim();
+  const categoryId = formEl.categoryId.value;
+  const location = formEl.location.value;
+  if (!description || !categoryId || !location) return;
+
+  if (findPresetByDescription(description)) {
+    alert("A shortcut with this description already exists.");
+    return;
+  }
+
+  settings.presets.push({
+    id: crypto.randomUUID(),
+    description,
+    categoryId,
+    location,
+  });
+
+  saveSettings();
+  formEl.reset();
+  populatePresetFormSelects(formEl);
+  renderSettings();
+}
+
+function renderSettingsList(type) {
+  const listEl = SETTINGS_LISTS[type];
+  const items = settings[type];
+
+  listEl.innerHTML = items
+    .map((item, index) => {
+      const isEditing = settingsEdit.type === type && settingsEdit.id === item.id;
+
+      if (isEditing) {
+        if (type === "categories") {
+          return `
+            <li class="settings-item settings-item--editing">
+              <form class="settings-edit-form" data-setting-type="${type}" data-item-id="${item.id}">
+                <input type="text" name="label" value="${escapeHtml(item.label)}" required maxlength="60" />
+                <input type="number" name="days" value="${item.days}" min="1" max="30" required aria-label="Days in fridge" />
+                <div class="settings-item__actions">
+                  <button type="submit" class="btn btn--primary btn--small">Save</button>
+                  <button type="button" class="btn btn--ghost btn--small" data-action="cancel">Cancel</button>
+                </div>
+              </form>
+            </li>
+          `;
+        }
+
+        return `
+          <li class="settings-item settings-item--editing">
+            <form class="settings-edit-form" data-setting-type="${type}" data-item-id="${item.id}">
+              <input type="text" name="label" value="${escapeHtml(item.label)}" required maxlength="60" />
+              <div class="settings-item__actions">
+                <button type="submit" class="btn btn--primary btn--small">Save</button>
+                <button type="button" class="btn btn--ghost btn--small" data-action="cancel">Cancel</button>
+              </div>
+            </form>
+          </li>
+        `;
+      }
+
+      const meta = type === "categories" ? `<span class="settings-item__meta">${item.days} days</span>` : "";
+      const canMoveUp = index > 0;
+      const canMoveDown = index < items.length - 1;
+
+      return `
+        <li class="settings-item">
+          <div class="settings-item__info">
+            <span class="settings-item__label">${escapeHtml(item.label)}</span>
+            ${meta}
+          </div>
+          <div class="settings-item__actions">
+            <button type="button" class="btn btn--ghost btn--small" data-action="up" data-setting-type="${type}" data-item-id="${item.id}" ${canMoveUp ? "" : "disabled"} aria-label="Move up">↑</button>
+            <button type="button" class="btn btn--ghost btn--small" data-action="down" data-setting-type="${type}" data-item-id="${item.id}" ${canMoveDown ? "" : "disabled"} aria-label="Move down">↓</button>
+            <button type="button" class="btn btn--ghost btn--small" data-action="edit" data-setting-type="${type}" data-item-id="${item.id}">Edit</button>
+            <button type="button" class="btn btn--ghost btn--small" data-action="delete" data-setting-type="${type}" data-item-id="${item.id}">Delete</button>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
+
+  listEl.querySelectorAll("[data-action]").forEach((btn) => {
+    btn.addEventListener("click", () => handleSettingsAction(btn));
+  });
+
+  listEl.querySelectorAll(".settings-edit-form").forEach((editForm) => {
+    editForm.addEventListener("submit", handleSettingsEditSave);
+    editForm.querySelector('[data-action="cancel"]')?.addEventListener("click", () => {
+      settingsEdit = { type: null, id: null };
+      renderSettings();
+    });
+  });
+}
+
+function handleSettingsAction(btn) {
+  const action = btn.dataset.action;
+  const type = btn.getAttribute("data-setting-type");
+  const id = btn.getAttribute("data-item-id");
+  if (!action || !type || !id) return;
+
+  if (action === "edit") {
+    settingsEdit = { type, id };
+    renderSettings();
+    return;
+  }
+
+  if (action === "delete") {
+    deleteSettingItem(type, id);
+    return;
+  }
+
+  if (action === "up" || action === "down") {
+    moveSettingItem(type, id, action === "up" ? -1 : 1);
+  }
+}
+
+function handleSettingsAdd(event) {
+  event.preventDefault();
+  const formEl = event.target;
+  const type = formEl.getAttribute("data-setting-type");
+  const label = formEl.label.value.trim();
+  if (!label) return;
+
+  if (type === "categories") {
+    const days = Number(formEl.days.value);
+    if (!days || days < 1) return;
+    settings.categories.push({ id: uniqueId("categories", label), label, days });
+  } else {
+    settings[type].push({ id: uniqueId(type, label), label });
+  }
+
+  saveSettings();
+  formEl.reset();
+  if (type === "categories") formEl.days.value = 4;
+  renderSettings();
+}
+
+function handleSettingsEditSave(event) {
+  event.preventDefault();
+  const formEl = event.target;
+  const type = formEl.getAttribute("data-setting-type");
+  const id = formEl.getAttribute("data-item-id");
+  const item = settings[type].find((entry) => entry.id === id);
+  if (!item) return;
+
+  if (type === "presets") {
+    const description = formEl.description.value.trim();
+    const categoryId = formEl.categoryId.value;
+    const location = formEl.location.value;
+    if (!description || !categoryId || !location) return;
+
+    const duplicate = settings.presets.find(
+      (preset) => preset.id !== id && preset.description.toLowerCase() === description.toLowerCase()
+    );
+    if (duplicate) {
+      alert("A shortcut with this description already exists.");
+      return;
+    }
+
+    item.description = description;
+    item.categoryId = categoryId;
+    item.location = location;
+    settingsEdit = { type: null, id: null };
+    saveSettings();
+    renderSettings();
+    return;
+  }
+
+  const newLabel = formEl.label.value.trim();
+  if (!newLabel) return;
+
+  if (type === "categories") {
+    const days = Number(formEl.days.value);
+    if (!days || days < 1) return;
+    item.label = newLabel;
+    item.days = days;
+  } else {
+    const oldLabel = item.label;
+    item.label = newLabel;
+    if (oldLabel !== newLabel) {
+      leftovers.forEach((leftover) => {
+        if (type === "containers" && leftover.container === oldLabel) leftover.container = newLabel;
+        if (type === "locations" && leftover.location === oldLabel) leftover.location = newLabel;
+      });
+      saveLeftovers();
+    }
+  }
+
+  settingsEdit = { type: null, id: null };
+  saveSettings();
+  renderSettings();
+}
+
+function moveSettingItem(type, id, direction) {
+  const items = settings[type];
+  if (!items) return;
+  const index = items.findIndex((item) => item.id === id);
+  const newIndex = index + direction;
+  if (index < 0 || newIndex < 0 || newIndex >= items.length) return;
+
+  const [moved] = items.splice(index, 1);
+  items.splice(newIndex, 0, moved);
+  saveSettings();
+  renderSettings();
+}
+
+function deleteSettingItem(type, id) {
+  if (type === "presets") {
+    settings.presets = settings.presets.filter((entry) => entry.id !== id);
+    saveSettings();
+    renderSettings();
+    return;
+  }
+
+  const items = settings[type];
+  if (items.length <= 1) {
+    alert("You must keep at least one option.");
+    return;
+  }
+
+  const item = items.find((entry) => entry.id === id);
+  if (!item) return;
+
+  const usageKey = type === "categories" ? item.id : item.label;
+  const inUse = countLeftoversUsing(type, usageKey);
+  if (inUse > 0) {
+    alert(`This option is used by ${inUse} item${inUse === 1 ? "" : "s"} in the fridge and can't be deleted.`);
+    return;
+  }
+
+  settings[type] = items.filter((entry) => entry.id !== id);
+  saveSettings();
+  renderSettings();
+}
+
+function handleShoppingSubmit(event) {
+  event.preventDefault();
+
+  const text = shoppingInput.value.trim();
+  if (!text) return;
+
+  addToShoppingList(text);
+  shoppingInput.value = "";
+  renderShopping();
+  shoppingInput.focus();
+}
+
+function addToShoppingList(text) {
+  shoppingItems.push({ id: crypto.randomUUID(), text, checked: false });
+  saveShopping();
+}
+
+function toggleShoppingItem(id) {
+  shoppingItems = shoppingItems.map((item) =>
+    item.id === id ? { ...item, checked: !item.checked } : item
+  );
+  saveShopping();
+  renderShopping();
+}
+
+function removeShoppingItem(id) {
+  shoppingItems = shoppingItems.filter((item) => item.id !== id);
+  saveShopping();
+  renderShopping();
+}
+
+function renderShopping() {
+  const hasItems = shoppingItems.length > 0;
+  shoppingEmpty.classList.toggle("hidden", hasItems);
+  shoppingList.classList.toggle("hidden", !hasItems);
+
+  if (!hasItems) {
+    shoppingList.innerHTML = "";
+    return;
+  }
+
+  shoppingList.innerHTML = shoppingItems
+    .map(
+      (item) => `
+      <li class="shopping-item ${item.checked ? "shopping-item--checked" : ""}">
+        <label class="shopping-item__label">
+          <input type="checkbox" data-id="${item.id}" ${item.checked ? "checked" : ""} />
+          <span>${escapeHtml(item.text)}</span>
+        </label>
+        <button type="button" class="btn btn--ghost btn--small shopping-item__remove" data-id="${item.id}" aria-label="Remove ${escapeHtml(item.text)}">Remove</button>
+      </li>
+    `
+    )
+    .join("");
+
+  shoppingList.querySelectorAll('input[type="checkbox"]').forEach((box) => {
+    box.addEventListener("change", () => toggleShoppingItem(box.dataset.id));
+  });
+
+  shoppingList.querySelectorAll(".shopping-item__remove").forEach((btn) => {
+    btn.addEventListener("click", () => removeShoppingItem(btn.dataset.id));
   });
 }
 
