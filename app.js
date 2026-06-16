@@ -4,34 +4,67 @@ const SETTINGS_STORAGE_KEY = "leftovers-settings";
 
 const DEFAULT_SETTINGS = {
   categories: [
-    { id: "cooked-meal", label: "Cooked meal", days: 4 },
-    { id: "drinks", label: "Drinks", days: 5 },
-    { id: "meat-poultry", label: "Meat & poultry", days: 3 },
-    { id: "soup-stew", label: "Soup & stew", days: 4 },
+    { id: "fruit", label: "Fruit", days: 5 },
     { id: "vegetables", label: "Vegetables", days: 5 },
+    { id: "meat-chicken", label: "Meat and chicken", days: 3 },
+    { id: "fish-seafood", label: "Fish and seafood", days: 2 },
     { id: "dairy", label: "Dairy", days: 5 },
-    { id: "seafood", label: "Seafood", days: 2 },
+    { id: "condiments", label: "Condiments", days: 14 },
+    { id: "cooked-stuff", label: "Cooked stuff", days: 4 },
+    { id: "drinks", label: "Drinks", days: 5 },
     { id: "other", label: "Other", days: 4 },
   ],
   containers: [
     { id: "glass-jar", label: "Glass jar" },
-    { id: "square-tub", label: "Square tub" },
-    { id: "glass-container", label: "Glass container" },
+    { id: "square-tub-small", label: "Square tub (small)" },
+    { id: "square-tub-medium", label: "Square tub (medium)" },
+    { id: "rectangle-tub-small", label: "Rectangle tub (small)" },
+    { id: "rectangle-tub-medium", label: "Rectangle tub (medium)" },
+    { id: "round-tub-small", label: "Round tub (small)" },
+    { id: "round-tub-medium", label: "Round tub (medium)" },
+    { id: "original-packaging", label: "Original packaging" },
+    { id: "foil-tray", label: "Foil tray" },
     { id: "other", label: "Other" },
   ],
   locations: [
     { id: "top-shelf", label: "Top shelf" },
     { id: "middle-shelf", label: "Middle shelf" },
     { id: "bottom-shelf", label: "Bottom shelf" },
-    { id: "fiambre-drawer", label: "Fiambre drawer" },
+    { id: "top-drawer", label: "Top drawer" },
     { id: "left-drawer", label: "Left drawer" },
     { id: "right-drawer", label: "Right drawer" },
     { id: "door", label: "Door" },
+    { id: "freezer", label: "Freezer" },
   ],
   presets: [],
 };
 
-const LEFTOVERS_PAGE_CATEGORY_IDS = new Set(["cooked-meal"]);
+const LEFTOVERS_PAGE_CATEGORY_IDS = new Set(["cooked-stuff"]);
+
+const LEGACY_CATEGORY_MAP = {
+  "cooked-meal": "cooked-stuff",
+  "meat-poultry": "meat-chicken",
+  "soup-stew": "cooked-stuff",
+  "seafood": "fish-seafood",
+};
+
+const CATEGORY_SCHEMA_VERSION = "2";
+const CATEGORY_SCHEMA_KEY = "leftovers-category-schema";
+
+const LEGACY_CONTAINER_MAP = {
+  "Square tub": "Square tub (small)",
+  "Glass container": "Other",
+};
+
+const CONTAINER_SCHEMA_VERSION = "1";
+const CONTAINER_SCHEMA_KEY = "leftovers-container-schema";
+
+const LEGACY_LOCATION_MAP = {
+  "Fiambre drawer": "Top drawer",
+};
+
+const LOCATION_SCHEMA_VERSION = "1";
+const LOCATION_SCHEMA_KEY = "leftovers-location-schema";
 
 const PAGES = {
   home: document.getElementById("page-home"),
@@ -133,7 +166,65 @@ function init() {
   settingsPresetsAddForm.addEventListener("submit", handlePresetAdd);
 
   stripLeftoversAddButton();
+  migrateCategorySchema();
+  migrateContainerSchema();
+  migrateLocationSchema();
   navigateTo("home");
+}
+
+function migrateLocationSchema() {
+  if (localStorage.getItem(LOCATION_SCHEMA_KEY) === LOCATION_SCHEMA_VERSION) return;
+
+  settings.locations = structuredClone(DEFAULT_SETTINGS.locations);
+
+  leftovers.forEach((item) => {
+    const mapped = LEGACY_LOCATION_MAP[item.location];
+    if (mapped) item.location = mapped;
+  });
+
+  settings.presets.forEach((preset) => {
+    const mapped = LEGACY_LOCATION_MAP[preset.location];
+    if (mapped) preset.location = mapped;
+  });
+
+  saveSettings();
+  saveLeftovers();
+  localStorage.setItem(LOCATION_SCHEMA_KEY, LOCATION_SCHEMA_VERSION);
+}
+
+function migrateContainerSchema() {
+  if (localStorage.getItem(CONTAINER_SCHEMA_KEY) === CONTAINER_SCHEMA_VERSION) return;
+
+  settings.containers = structuredClone(DEFAULT_SETTINGS.containers);
+
+  leftovers.forEach((item) => {
+    const mapped = LEGACY_CONTAINER_MAP[item.container];
+    if (mapped) item.container = mapped;
+  });
+
+  saveSettings();
+  saveLeftovers();
+  localStorage.setItem(CONTAINER_SCHEMA_KEY, CONTAINER_SCHEMA_VERSION);
+}
+
+function migrateCategorySchema() {
+  if (localStorage.getItem(CATEGORY_SCHEMA_KEY) === CATEGORY_SCHEMA_VERSION) return;
+
+  settings.categories = structuredClone(DEFAULT_SETTINGS.categories);
+
+  leftovers.forEach((item) => {
+    const mapped = LEGACY_CATEGORY_MAP[item.category];
+    if (mapped) item.category = mapped;
+  });
+
+  settings.presets.forEach((preset) => {
+    const mapped = LEGACY_CATEGORY_MAP[preset.categoryId];
+    if (mapped) preset.categoryId = mapped;
+  });
+
+  saveSettings();
+  saveLeftovers();
+  localStorage.setItem(CATEGORY_SCHEMA_KEY, CATEGORY_SCHEMA_VERSION);
 }
 
 function stripLeftoversAddButton() {
@@ -146,7 +237,7 @@ function loadSettings() {
     if (!raw) return structuredClone(DEFAULT_SETTINGS);
     const parsed = JSON.parse(raw);
     const categories = parsed.categories?.length
-      ? mergeDefaultCategories(parsed.categories)
+      ? parsed.categories
       : structuredClone(DEFAULT_SETTINGS.categories);
     const result = {
       categories,
@@ -154,23 +245,10 @@ function loadSettings() {
       locations: parsed.locations?.length ? parsed.locations : structuredClone(DEFAULT_SETTINGS.locations),
       presets: Array.isArray(parsed.presets) ? parsed.presets : [],
     };
-    if (parsed.categories?.length && categories.length !== parsed.categories.length) {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(result));
-    }
     return result;
   } catch {
     return structuredClone(DEFAULT_SETTINGS);
   }
-}
-
-function mergeDefaultCategories(categories) {
-  const merged = [...categories];
-  DEFAULT_SETTINGS.categories.forEach((def) => {
-    if (!merged.some((item) => item.id === def.id)) {
-      merged.push({ ...def });
-    }
-  });
-  return merged;
 }
 
 function saveSettings() {
@@ -576,10 +654,10 @@ function renderLeftovers() {
     const text = emptyState.querySelector(".empty-state__text");
     if (leftovers.length === 0) {
       title.textContent = "Your fridge is empty";
-      text.textContent = "Add cooked meals from the home menu.";
+      text.textContent = "Add cooked stuff from the home menu.";
     } else {
-      title.textContent = "No cooked meals";
-      text.textContent = "Only cooked meals appear here. Add a cooked meal to track it.";
+      title.textContent = "No cooked stuff";
+      text.textContent = "Only cooked stuff appears here. Add a cooked item to track it.";
     }
     leftoverList.innerHTML = "";
     return;
