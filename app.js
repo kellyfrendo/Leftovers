@@ -41,6 +41,11 @@ const DEFAULT_SETTINGS = {
 
 const LEFTOVERS_PAGE_CATEGORY_IDS = new Set(["cooked-stuff"]);
 
+const LEFTOVERS_ADD_DEFAULTS = {
+  categoryId: "cooked-stuff",
+  location: "Middle shelf",
+};
+
 const LEGACY_CATEGORY_MAP = {
   "cooked-meal": "cooked-stuff",
   "meat-poultry": "meat-chicken",
@@ -78,10 +83,10 @@ const PAGES = {
 let settings = loadSettings();
 let leftovers = loadLeftovers();
 let shoppingItems = loadShopping();
-let activeFilter = "all";
 let fridgeExcludedCategories = new Set();
 let currentPage = "home";
 let returnPage = "leftovers";
+let addFormDefaults = null;
 let settingsEdit = { type: null, id: null };
 
 const form = document.getElementById("add-form");
@@ -95,14 +100,14 @@ const locationInput = document.getElementById("location");
 const eatByPreview = document.getElementById("eat-by-preview");
 const leftoverList = document.getElementById("leftover-list");
 const emptyState = document.getElementById("empty-state");
-const statsEl = document.getElementById("stats");
-const filterButtons = document.querySelectorAll(".filter-btn");
+const leftoversAddItemBtn = document.getElementById("leftovers-add-item");
 const fridgeByLocation = document.getElementById("fridge-by-location");
 const fridgeEmpty = document.getElementById("fridge-empty");
 const fridgeSummary = document.getElementById("fridge-summary");
 const fridgeFiltersPanel = document.getElementById("fridge-filters-panel");
 const fridgeCategoryFilters = document.getElementById("fridge-category-filters");
 const fridgeShowAllBtn = document.getElementById("fridge-show-all");
+const fridgeHideAllBtn = document.getElementById("fridge-hide-all");
 const fridgeFilterEmpty = document.getElementById("fridge-filter-empty");
 const shoppingForm = document.getElementById("shopping-form");
 const shoppingInput = document.getElementById("shopping-input");
@@ -138,24 +143,23 @@ function init() {
 
   addBackBtn.addEventListener("click", () => navigateTo(returnPage));
 
+  leftoversAddItemBtn.addEventListener("click", openAddItemFromLeftovers);
+
   form.addEventListener("submit", handleSubmit);
   dateInput.addEventListener("change", updateEatByPreview);
   categoryInput.addEventListener("change", updateEatByPreview);
   descriptionInput.addEventListener("input", () => applyPresetForDescription(descriptionInput.value));
   descriptionInput.addEventListener("change", () => applyPresetForDescription(descriptionInput.value));
 
-  filterButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      activeFilter = btn.dataset.filter;
-      filterButtons.forEach((b) => b.classList.toggle("filter-btn--active", b === btn));
-      renderLeftovers();
-    });
-  });
-
   shoppingForm.addEventListener("submit", handleShoppingSubmit);
 
   fridgeShowAllBtn.addEventListener("click", () => {
     fridgeExcludedCategories.clear();
+    renderFridgeOverview();
+  });
+
+  fridgeHideAllBtn.addEventListener("click", () => {
+    settings.categories.forEach((cat) => fridgeExcludedCategories.add(cat.id));
     renderFridgeOverview();
   });
 
@@ -165,7 +169,6 @@ function init() {
 
   settingsPresetsAddForm.addEventListener("submit", handlePresetAdd);
 
-  stripLeftoversAddButton();
   migrateCategorySchema();
   migrateContainerSchema();
   migrateLocationSchema();
@@ -227,8 +230,10 @@ function migrateCategorySchema() {
   localStorage.setItem(CATEGORY_SCHEMA_KEY, CATEGORY_SCHEMA_VERSION);
 }
 
-function stripLeftoversAddButton() {
-  PAGES.leftovers?.querySelectorAll('[data-page="add"]').forEach((btn) => btn.remove());
+function openAddItemFromLeftovers() {
+  returnPage = "leftovers";
+  addFormDefaults = { ...LEFTOVERS_ADD_DEFAULTS };
+  navigateTo("add");
 }
 
 function loadSettings() {
@@ -382,10 +387,7 @@ function navigateTo(page) {
     el.classList.toggle("hidden", name !== page);
   });
 
-  if (page === "leftovers") {
-    stripLeftoversAddButton();
-    renderLeftovers();
-  }
+  if (page === "leftovers") renderLeftovers();
   if (page === "fridge") renderFridgeOverview();
   if (page === "shopping") renderShopping();
   if (page === "settings") renderSettings();
@@ -393,6 +395,15 @@ function navigateTo(page) {
     populateDropdowns();
     updateDescriptionDatalist();
     dateInput.value = todayString();
+    if (addFormDefaults) {
+      if (settings.categories.some((cat) => cat.id === addFormDefaults.categoryId)) {
+        categoryInput.value = addFormDefaults.categoryId;
+      }
+      if (settings.locations.some((loc) => loc.label === addFormDefaults.location)) {
+        locationInput.value = addFormDefaults.location;
+      }
+      addFormDefaults = null;
+    }
     updateEatByPreview();
     descriptionInput.focus();
   }
@@ -607,7 +618,7 @@ function getLeftoversPageItems() {
 }
 
 function getFilteredLeftovers() {
-  const sorted = [...getLeftoversPageItems()].sort((a, b) => {
+  return [...getLeftoversPageItems()].sort((a, b) => {
     const statusOrder = { overdue: 0, soon: 1, fresh: 2 };
     const statusA = getStatus(a.eatBy);
     const statusB = getStatus(b.eatBy);
@@ -616,32 +627,9 @@ function getFilteredLeftovers() {
     }
     return a.eatBy.localeCompare(b.eatBy);
   });
-
-  if (activeFilter === "all") return sorted;
-  return sorted.filter((item) => getStatus(item.eatBy) === activeFilter);
-}
-
-function renderStats() {
-  const pageItems = getLeftoversPageItems();
-  const counts = { fresh: 0, soon: 0, overdue: 0 };
-  pageItems.forEach((item) => {
-    counts[getStatus(item.eatBy)] += 1;
-  });
-
-  if (pageItems.length === 0) {
-    statsEl.innerHTML = "";
-    return;
-  }
-
-  statsEl.innerHTML = `
-    <span class="stat stat--fresh">${counts.fresh} fresh</span>
-    <span class="stat stat--soon">${counts.soon} use soon</span>
-    <span class="stat stat--overdue">${counts.overdue} overdue</span>
-  `;
 }
 
 function renderLeftovers() {
-  renderStats();
   const pageItems = getLeftoversPageItems();
   const filtered = getFilteredLeftovers();
 
@@ -657,15 +645,9 @@ function renderLeftovers() {
       text.textContent = "Add cooked stuff from the home menu.";
     } else {
       title.textContent = "No cooked stuff";
-      text.textContent = "Only cooked stuff appears here. Add a cooked item to track it.";
+      text.innerHTML = "Only cooked stuff appears here.<br>Add a cooked item to track it.";
     }
     leftoverList.innerHTML = "";
-    return;
-  }
-
-  if (filtered.length === 0) {
-    leftoverList.innerHTML = `<li class="no-results">No ${activeFilter === "all" ? "" : activeFilter + " "}items to show.</li>`;
-    leftoverList.classList.remove("hidden");
     return;
   }
 
@@ -680,7 +662,6 @@ function renderLeftovers() {
           <div class="card__main">
             <div class="card__header">
               <h3 class="card__title">${formatItemDescription(item)}</h3>
-              <span class="badge badge--${status}">${statusLabel(status)}</span>
             </div>
             <dl class="card__meta">
               <div>
@@ -768,8 +749,11 @@ function renderFridgeCategoryFilters() {
   });
 
   const allIncluded = fridgeExcludedCategories.size === 0;
+  const allExcluded = fridgeExcludedCategories.size >= settings.categories.length;
   fridgeShowAllBtn.disabled = allIncluded;
   fridgeShowAllBtn.setAttribute("aria-disabled", String(allIncluded));
+  fridgeHideAllBtn.disabled = allExcluded;
+  fridgeHideAllBtn.setAttribute("aria-disabled", String(allExcluded));
 }
 
 function renderFridgeOverview() {

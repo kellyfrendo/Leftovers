@@ -31,24 +31,24 @@
             </svg>
           </span>
           <h1>Hungry?</h1>
-          <p class="home-header__tagline">Our kitchen companion</p>
+          <p class="home-header__tagline">Kitchen Companion version 1.0</p>
         </header>
 
         <nav class="home-nav" aria-label="Main menu">
           <button type="button" class="home-nav__btn" data-page="fridge">
             <span class="home-nav__icon" aria-hidden="true">🧊</span>
             <span class="home-nav__label">What's In Our Fridge</span>
-            <span class="home-nav__desc">Browse by shelf and drawer</span>
+            <span class="home-nav__desc">Browse by location</span>
           </button>
           <button type="button" class="home-nav__btn" data-page="leftovers">
             <span class="home-nav__icon" aria-hidden="true">🥡</span>
             <span class="home-nav__label">View Leftovers</span>
-            <span class="home-nav__desc">Track dates, eat-by, and status</span>
+            <span class="home-nav__desc">Find cooked stuff that needs to be eaten</span>
           </button>
           <button type="button" class="home-nav__btn" data-page="shopping">
             <span class="home-nav__icon" aria-hidden="true">🛒</span>
             <span class="home-nav__label">Shopping List</span>
-            <span class="home-nav__desc">Items to pick up at the store</span>
+            <span class="home-nav__desc">What do we need to buy?</span>
           </button>
           <button type="button" class="home-nav__btn home-nav__btn--settings" data-page="settings">
             <span class="home-nav__icon" aria-hidden="true">⚙️</span>
@@ -62,24 +62,18 @@
         <header class="page-header">
           <div class="page-header__actions">
             <button type="button" class="btn btn--back" data-page="home">← Home</button>
+            <button type="button" id="leftovers-add-item" class="btn btn--primary btn--small">
+              Add Item
+            </button>
           </div>
           <div class="page-header__title">
             <h1>View Leftovers</h1>
-            <div class="header__stats" id="stats" aria-live="polite"></div>
           </div>
         </header>
 
         <section class="panel panel--list" aria-labelledby="fridge-heading">
           <div class="panel__toolbar">
             <h2 id="fridge-heading">In the fridge</h2>
-            <div class="filters" role="group" aria-label="Filter leftovers">
-              <button type="button" class="filter-btn filter-btn--active" data-filter="all">
-                All
-              </button>
-              <button type="button" class="filter-btn" data-filter="fresh">Fresh</button>
-              <button type="button" class="filter-btn" data-filter="soon">Use soon</button>
-              <button type="button" class="filter-btn" data-filter="overdue">Overdue</button>
-            </div>
           </div>
 
           <div id="empty-state" class="empty-state hidden">
@@ -179,9 +173,14 @@
         <div id="fridge-filters-panel" class="panel fridge-filters hidden">
           <div class="fridge-filters__header">
             <h2 class="fridge-filters__title">Show categories</h2>
-            <button type="button" id="fridge-show-all" class="btn btn--primary btn--small fridge-filters__show-all">
-              Show All
-            </button>
+            <div class="fridge-filters__actions">
+              <button type="button" id="fridge-hide-all" class="btn btn--ghost btn--small fridge-filters__toggle-all">
+                Hide All
+              </button>
+              <button type="button" id="fridge-show-all" class="btn btn--primary btn--small fridge-filters__toggle-all">
+                Show All
+              </button>
+            </div>
           </div>
           <div id="fridge-category-filters" class="filters" role="group" aria-label="Filter by category"></div>
         </div>

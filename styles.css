@@ -227,6 +227,10 @@ body {
     min-height: 44px;
   }
 
+  .fridge-filters__toggle-all {
+    min-height: auto;
+  }
+
   .card__reduce {
     min-width: 72px;
   }
@@ -733,24 +737,38 @@ body {
   font-weight: 600;
 }
 
-.fridge-filters__show-all {
+.fridge-filters__actions {
+  display: flex;
   flex-shrink: 0;
-  padding: 0.3rem 0.6rem;
-  font-size: 0.75rem;
+  gap: 0.35rem;
 }
 
-.fridge-filters__show-all:disabled {
+.fridge-filters__toggle-all {
+  padding: 0.12rem 0.35rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  min-height: auto;
+  line-height: 1.2;
+}
+
+.fridge-filters__toggle-all:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 .fridge-filters .filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.35rem;
 }
 
 .fridge-filters .filter-btn {
-  padding: 0.25rem 0.5rem;
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.4rem;
   font-size: 0.72rem;
+  text-align: center;
+  line-height: 1.2;
 }
 
 .fridge-filters .filter-btn:not(.filter-btn--active) {
