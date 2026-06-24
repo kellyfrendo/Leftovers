@@ -1,6 +1,6 @@
 # Leftovers — Fridge Tracker
 
-Track what's in your fridge, when you put it in, and when it should be eaten by. **Kitchen Companion Version 2.0** stores everything in **Supabase** via Netlify — not in the browser.
+Track what's in your fridge, when you put it in, and when it should be eaten by. **Kitchen Companion v 3.0 (database)** stores everything in **Supabase** via Netlify — not in the browser.
 
 ## Use on iPad
 
