@@ -1,5 +1,6 @@
 import {
   fetchKitchenByDeviceId,
+  fetchKitchenByKitchenKey,
   upsertKitchenSync,
 } from "./_lib/kitchen.mjs";
 
@@ -14,8 +15,19 @@ function jsonResponse(body, status = 200) {
   });
 }
 
+function normalizeKitchenKey(raw) {
+  return String(raw || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
+}
+
 function validatePayload(body) {
   if (!body || typeof body !== "object") return "Invalid request body.";
+  if (!body.kitchen_key || normalizeKitchenKey(body.kitchen_key).length !== 8) {
+    return "Missing or invalid kitchen_key.";
+  }
   if (!body.device_id || typeof body.device_id !== "string") return "Missing device_id.";
   if (typeof body.email !== "string") return "Missing email.";
   if (typeof body.notifications_enabled !== "boolean") return "Missing notifications_enabled.";
@@ -52,13 +64,18 @@ export default async (request) => {
   const env = { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY };
 
   if (request.method === "GET") {
-    const deviceId = new URL(request.url).searchParams.get("device_id");
-    if (!deviceId) {
-      return jsonResponse({ ok: false, error: "Missing device_id." }, 400);
-    }
+    const params = new URL(request.url).searchParams;
+    const kitchenKey = normalizeKitchenKey(params.get("kitchen_key"));
+    const deviceId = params.get("device_id");
 
     try {
-      const kitchen = await fetchKitchenByDeviceId(env, deviceId);
+      let kitchen = null;
+      if (kitchenKey.length === 8) {
+        kitchen = await fetchKitchenByKitchenKey(env, kitchenKey);
+      }
+      if (!kitchen && deviceId) {
+        kitchen = await fetchKitchenByDeviceId(env, deviceId);
+      }
       return jsonResponse({ ok: true, kitchen });
     } catch (error) {
       return jsonResponse({ ok: false, error: error.message || "Load failed." }, 500);
@@ -86,6 +103,7 @@ export default async (request) => {
     return jsonResponse({ ok: false, error: "Email is required when notifications are enabled." }, 400);
   }
 
+  const kitchenKey = normalizeKitchenKey(body.kitchen_key);
   const categories = body.settings.categories.map((cat) => ({
     id: cat.id,
     label: cat.label,
@@ -93,6 +111,7 @@ export default async (request) => {
 
   try {
     await upsertKitchenSync(env, {
+      kitchen_key: kitchenKey,
       device_id: body.device_id,
       email,
       notify_days_before: body.notify_days_before,

@@ -13,7 +13,16 @@ The app must be opened in **Safari over HTTP** from your **Netlify URL** — not
 3. Complete the Supabase setup below and add Netlify environment variables.
 4. On the iPad, open your Netlify URL in Safari → **Add to Home Screen**.
 
-Each browser keeps a small anonymous **device ID** locally so the app knows which cloud kitchen to load. Your fridge items, shopping list, settings, and notification preferences all live in Supabase.
+Each browser keeps a small **kitchen code** locally so it knows which shared fridge to load. Your fridge items, shopping list, settings, and notification preferences all live in Supabase.
+
+## Share one fridge across devices
+
+1. Open **Settings → Shared kitchen** on the device that has the fridge you want to keep.
+2. Tap **Copy code** (for example `ABCD-1234`).
+3. On your other device (laptop, iPad, etc.), open the same Netlify app → **Settings → Shared kitchen**.
+4. Enter the code under **Join a kitchen** and tap **Join kitchen**.
+
+Both devices will now show the same fridge and stay in sync through Supabase.
 
 ## Cloud storage setup (required)
 
@@ -21,7 +30,7 @@ Each browser keeps a small anonymous **device ID** locally so the app knows whic
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor** (or **Table Editor**) and run the script in [`supabase/schema.sql`](supabase/schema.sql).
-3. If you already created `kitchen_sync` for notifications only, also run the `ALTER TABLE` lines at the bottom of that file to add `settings` and `shopping` columns.
+3. If you already created `kitchen_sync` before shared kitchens, run the migration block at the bottom of [`supabase/schema.sql`](supabase/schema.sql) in the SQL Editor.
 4. In **Project Settings → API**, copy:
    - **Project URL** (full URL, e.g. `https://YOUR-PROJECT.supabase.co`)
    - **service_role** key (keep this secret — server only)

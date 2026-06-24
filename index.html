@@ -253,6 +253,11 @@
         </header>
 
         <nav class="home-nav settings-menu" aria-label="Settings">
+          <button type="button" class="home-nav__btn" data-page="settings-kitchen">
+            <span class="home-nav__icon" aria-hidden="true">🔗</span>
+            <span class="home-nav__label">Shared kitchen</span>
+            <span class="home-nav__desc">Use the same code on iPad, laptop, and other devices.</span>
+          </button>
           <button type="button" class="home-nav__btn" data-page="settings-categories">
             <span class="home-nav__icon" aria-hidden="true">🏷️</span>
             <span class="home-nav__label">Category</span>
@@ -289,6 +294,49 @@
             <span class="home-nav__desc">Export or import your data.</span>
           </button>
         </nav>
+      </section>
+
+      <section id="page-settings-kitchen" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="settings">← Settings</button>
+          <div class="page-header__title">
+            <h1>Shared kitchen</h1>
+            <p class="page-header__subtitle">
+              Share one fridge across your iPad, laptop, and other devices.
+            </p>
+          </div>
+        </header>
+
+        <section class="panel settings-section" aria-labelledby="settings-kitchen-heading">
+          <h2 id="settings-kitchen-heading" class="visually-hidden">Shared kitchen</h2>
+          <p class="field__label">Your kitchen code</p>
+          <p id="kitchen-link-code" class="kitchen-link-code" aria-live="polite"></p>
+          <div class="settings-backup__actions">
+            <button type="button" id="kitchen-link-copy" class="btn btn--ghost">Copy code</button>
+          </div>
+          <p class="settings-section__hint">
+            Enter this same code on each device, or join an existing kitchen below.
+          </p>
+
+          <form id="kitchen-link-join-form" class="form">
+            <label class="field">
+              <span class="field__label">Join a kitchen</span>
+              <input
+                type="text"
+                id="kitchen-link-join-input"
+                name="kitchenCode"
+                placeholder="ABCD-1234"
+                autocapitalize="characters"
+                autocomplete="off"
+                maxlength="9"
+              />
+            </label>
+            <div class="settings-backup__actions">
+              <button type="submit" class="btn btn--primary">Join kitchen</button>
+            </div>
+          </form>
+          <p id="kitchen-link-status" class="settings-backup__status" role="status" aria-live="polite"></p>
+        </section>
       </section>
 
       <section id="page-settings-categories" class="page hidden">
@@ -477,8 +525,9 @@
       </section>
     </div>
 
-    <script src="cloud-storage.js?v=1"></script>
+    <script src="cloud-storage.js?v=2"></script>
+    <script src="kitchen-link.js?v=1"></script>
     <script src="notifications.js?v=2"></script>
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
   </body>
 </html>

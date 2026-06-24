@@ -1,3 +1,4 @@
+const KITCHEN_KEY_STORAGE = "leftovers-kitchen-key";
 const DEVICE_ID_KEY = "leftovers-device-id";
 
 const LEGACY_STORAGE_KEYS = [
@@ -12,6 +13,8 @@ const LEGACY_STORAGE_KEYS = [
   "leftovers-location-schema",
   "leftovers-location-builtin-schema",
 ];
+
+const KITCHEN_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 let getState = null;
 let saveTimer = null;
@@ -28,6 +31,33 @@ function getApiUrl() {
   return `${window.location.origin}/.netlify/functions/sync-kitchen`;
 }
 
+function normalizeKitchenKey(raw) {
+  return String(raw || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
+}
+
+function formatKitchenKey(raw) {
+  const key = normalizeKitchenKey(raw);
+  if (key.length !== 8) return key;
+  return `${key.slice(0, 4)}-${key.slice(4)}`;
+}
+
+function isLegacyKitchenKey(key) {
+  const normalized = normalizeKitchenKey(key);
+  return normalized.length !== 8;
+}
+
+function generateKitchenKey() {
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    code += KITCHEN_CODE_CHARS[Math.floor(Math.random() * KITCHEN_CODE_CHARS.length)];
+  }
+  return code;
+}
+
 function getDeviceId() {
   let deviceId = localStorage.getItem(DEVICE_ID_KEY);
   if (!deviceId) {
@@ -37,9 +67,26 @@ function getDeviceId() {
   return deviceId;
 }
 
+function getKitchenKey() {
+  let key = localStorage.getItem(KITCHEN_KEY_STORAGE);
+  if (!key) {
+    key = generateKitchenKey();
+    localStorage.setItem(KITCHEN_KEY_STORAGE, key);
+  }
+  return normalizeKitchenKey(key);
+}
+
+function setKitchenKey(key) {
+  const normalized = normalizeKitchenKey(key);
+  if (normalized.length !== 8) {
+    throw new Error("Enter a valid 8-character kitchen code.");
+  }
+  localStorage.setItem(KITCHEN_KEY_STORAGE, normalized);
+  return normalized;
+}
+
 function notifyStatusListeners() {
-  const snapshot = { ...syncStatus };
-  statusListeners.forEach((listener) => listener(snapshot));
+  statusListeners.forEach((listener) => listener({ ...syncStatus }));
 }
 
 function readLegacyLocalData() {
@@ -88,22 +135,36 @@ function clearLegacyLocalData() {
   LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
 }
 
-async function loadKitchen() {
+async function fetchKitchenFromApi(params) {
   const apiUrl = getApiUrl();
   if (!apiUrl) {
     throw new Error("Cloud storage requires the Netlify-deployed app.");
   }
 
-  const response = await fetch(`${apiUrl}?device_id=${encodeURIComponent(getDeviceId())}`);
+  const query = new URLSearchParams(params);
+  const response = await fetch(`${apiUrl}?${query.toString()}`);
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok || !data.ok) {
     throw new Error(data.error || "Could not load your kitchen from the cloud.");
   }
 
+  return data.kitchen || null;
+}
+
+async function loadKitchen() {
+  const kitchenKey = getKitchenKey();
+  let kitchen = await fetchKitchenFromApi({ kitchen_key: kitchenKey });
+
+  if (!kitchen) {
+    kitchen = await fetchKitchenFromApi({ device_id: getDeviceId() });
+  }
+
   return {
-    kitchen: data.kitchen || null,
-    legacy: data.kitchen ? null : readLegacyLocalData(),
+    kitchen,
+    legacy: kitchen ? null : readLegacyLocalData(),
+    kitchenKey,
+    needsReadableKitchenKey: Boolean(kitchen && isLegacyKitchenKey(kitchen.kitchen_key || kitchenKey)),
   };
 }
 
@@ -121,6 +182,7 @@ async function saveKitchen(payload) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        kitchen_key: getKitchenKey(),
         device_id: getDeviceId(),
         ...payload,
       }),
@@ -141,6 +203,26 @@ async function saveKitchen(payload) {
     syncStatus.saving = false;
     notifyStatusListeners();
   }
+}
+
+async function joinKitchen(rawKey) {
+  const kitchenKey = setKitchenKey(rawKey);
+  const kitchen = await fetchKitchenFromApi({ kitchen_key: kitchenKey });
+  if (!kitchen) {
+    throw new Error("No kitchen found with that code. Check the code and try again.");
+  }
+  return kitchen;
+}
+
+async function copyKitchenCode() {
+  const code = formatKitchenKey(getKitchenKey());
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(code);
+    return code;
+  }
+
+  window.prompt("Copy your kitchen code:", code);
+  return code;
 }
 
 function registerStateProvider(provider) {
@@ -181,8 +263,14 @@ function getSyncStatus() {
 window.LeftoversCloud = {
   isAvailable: () => Boolean(getApiUrl()),
   getDeviceId,
+  getKitchenKey,
+  formatKitchenKey,
+  setKitchenKey,
+  generateKitchenKey,
   registerStateProvider,
   loadKitchen,
+  joinKitchen,
+  copyKitchenCode,
   saveNow,
   queueSave,
   onStatusChange,

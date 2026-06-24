@@ -28,12 +28,12 @@ export default async () => {
 
   for (const kitchen of kitchens) {
     if (!kitchen.email?.trim()) {
-      results.push({ deviceId: kitchen.device_id, status: "skipped", reason: "missing email" });
+      results.push({ kitchenKey: kitchen.kitchen_key, status: "skipped", reason: "missing email" });
       continue;
     }
 
     if (kitchen.last_notified_date === today) {
-      results.push({ deviceId: kitchen.device_id, status: "skipped", reason: "already notified today" });
+      results.push({ kitchenKey: kitchen.kitchen_key, status: "skipped", reason: "already notified today" });
       continue;
     }
 
@@ -45,7 +45,7 @@ export default async () => {
     );
 
     if (!alerts.overdue.length && !alerts.dueSoon.length) {
-      results.push({ deviceId: kitchen.device_id, status: "skipped", reason: "nothing due" });
+      results.push({ kitchenKey: kitchen.kitchen_key, status: "skipped", reason: "nothing due" });
       continue;
     }
 
@@ -66,11 +66,11 @@ export default async () => {
         }),
       });
 
-      await markNotifiedToday(env, kitchen.device_id, today);
-      results.push({ deviceId: kitchen.device_id, status: "sent", total });
+      await markNotifiedToday(env, kitchen.kitchen_key, today);
+      results.push({ kitchenKey: kitchen.kitchen_key, status: "sent", total });
     } catch (error) {
       results.push({
-        deviceId: kitchen.device_id,
+        kitchenKey: kitchen.kitchen_key,
         status: "error",
         error: error.message || "send failed",
       });

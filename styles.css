@@ -614,6 +614,14 @@ body {
   visibility: hidden;
 }
 
+.kitchen-link-code {
+  margin: 0.25rem 0 1rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 .page.hidden {
   display: none !important;
 }

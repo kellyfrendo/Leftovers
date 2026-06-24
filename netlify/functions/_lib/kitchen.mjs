@@ -132,16 +132,34 @@ export async function supabaseRequest(env, path, options = {}) {
   return JSON.parse(text);
 }
 
+export async function fetchKitchenByKitchenKey(env, kitchenKey) {
+  const rows = await supabaseRequest(
+    env,
+    `kitchen_sync?kitchen_key=eq.${encodeURIComponent(kitchenKey)}&select=kitchen_key,device_id,email,notify_days_before,notifications_enabled,leftovers,shopping,settings,categories,updated_at,last_notified_date`
+  );
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
 export async function fetchKitchenByDeviceId(env, deviceId) {
   const rows = await supabaseRequest(
     env,
-    `kitchen_sync?device_id=eq.${encodeURIComponent(deviceId)}&select=device_id,email,notify_days_before,notifications_enabled,leftovers,shopping,settings,categories,updated_at,last_notified_date`
+    `kitchen_sync?device_id=eq.${encodeURIComponent(deviceId)}&select=kitchen_key,device_id,email,notify_days_before,notifications_enabled,leftovers,shopping,settings,categories,updated_at,last_notified_date`
   );
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
 export async function upsertKitchenSync(env, row) {
-  return supabaseRequest(env, "kitchen_sync?on_conflict=device_id", {
+  const existingByKey = await fetchKitchenByKitchenKey(env, row.kitchen_key);
+  if (existingByKey) {
+    return patchKitchen(env, existingByKey.kitchen_key, row);
+  }
+
+  const legacy = await fetchKitchenByDeviceId(env, row.device_id);
+  if (legacy) {
+    return patchKitchen(env, legacy.kitchen_key, row);
+  }
+
+  return supabaseRequest(env, "kitchen_sync?on_conflict=kitchen_key", {
     method: "POST",
     headers: {
       Prefer: "resolution=merge-duplicates,return=minimal",
@@ -150,15 +168,25 @@ export async function upsertKitchenSync(env, row) {
   });
 }
 
+function patchKitchen(env, currentKitchenKey, row) {
+  return supabaseRequest(env, `kitchen_sync?kitchen_key=eq.${encodeURIComponent(currentKitchenKey)}`, {
+    method: "PATCH",
+    headers: {
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(row),
+  });
+}
+
 export async function fetchEnabledKitchens(env) {
   return supabaseRequest(
     env,
-    "kitchen_sync?notifications_enabled=eq.true&email=not.is.null&select=device_id,email,notify_days_before,leftovers,categories,settings,last_notified_date"
+    "kitchen_sync?notifications_enabled=eq.true&email=not.is.null&select=kitchen_key,email,notify_days_before,leftovers,categories,settings,last_notified_date"
   );
 }
 
-export async function markNotifiedToday(env, deviceId, today) {
-  return supabaseRequest(env, `kitchen_sync?device_id=eq.${deviceId}`, {
+export async function markNotifiedToday(env, kitchenKey, today) {
+  return supabaseRequest(env, `kitchen_sync?kitchen_key=eq.${encodeURIComponent(kitchenKey)}`, {
     method: "PATCH",
     headers: {
       Prefer: "return=minimal",

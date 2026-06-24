@@ -126,6 +126,7 @@ const PAGES = {
   "settings-presets": document.getElementById("page-settings-presets"),
   "settings-inventory": document.getElementById("page-settings-inventory"),
   "settings-notifications": document.getElementById("page-settings-notifications"),
+  "settings-kitchen": document.getElementById("page-settings-kitchen"),
   "settings-backup": document.getElementById("page-settings-backup"),
 };
 
@@ -136,6 +137,7 @@ const SETTINGS_DETAIL_PAGES = new Set([
   "settings-presets",
   "settings-inventory",
   "settings-notifications",
+  "settings-kitchen",
   "settings-backup",
 ]);
 
@@ -256,6 +258,7 @@ async function init() {
   importBackupFile.addEventListener("change", handleImportBackup);
 
   window.LeftoversNotifications?.bindNotificationsUI();
+  window.LeftoversKitchenLink?.bindKitchenLinkUI();
   navigateTo("home");
 }
 
@@ -356,22 +359,42 @@ async function bootstrapFromCloud() {
 
   window.LeftoversCloud.registerStateProvider(buildCloudPayload);
 
-  const { kitchen, legacy } = await window.LeftoversCloud.loadKitchen();
+  const { kitchen, legacy, needsReadableKitchenKey } = await window.LeftoversCloud.loadKitchen();
 
   if (kitchen) {
     applyKitchenFromCloud(kitchen);
+    if (kitchen.kitchen_key && kitchen.kitchen_key.length === 8) {
+      window.LeftoversCloud.setKitchenKey(kitchen.kitchen_key);
+    }
   } else if (legacy) {
     applyLegacyLocalData(legacy);
   }
 
   runDataMigrations();
 
-  const needsInitialSave = !kitchen || !kitchen.settings?.categories?.length;
+  if (needsReadableKitchenKey) {
+    window.LeftoversCloud.setKitchenKey(window.LeftoversCloud.generateKitchenKey());
+  }
+
+  const needsInitialSave = !kitchen || !kitchen.settings?.categories?.length || needsReadableKitchenKey;
   if (needsInitialSave) {
     await window.LeftoversCloud.saveNow();
   }
 
   window.LeftoversCloud.clearLegacyLocalData();
+}
+
+async function reloadFromCloud(kitchen) {
+  applyKitchenFromCloud(kitchen);
+  runDataMigrations();
+  fridgeExcludedCategories.clear();
+  settingsEdit = { type: null, id: null };
+  populateDropdowns();
+  updateDescriptionDatalist();
+  if (currentPage === "leftovers") renderLeftovers();
+  if (currentPage === "fridge") renderFridgeOverview();
+  if (currentPage === "shopping") renderShopping();
+  if (SETTINGS_DETAIL_PAGES.has(currentPage)) renderSettingsPage(currentPage);
 }
 
 function runDataMigrations() {
@@ -1329,6 +1352,7 @@ function renderSettingsPage(page) {
   }
   if (page === "settings-inventory") renderInventory();
   if (page === "settings-notifications") window.LeftoversNotifications?.populateNotificationsForm();
+  if (page === "settings-kitchen") window.LeftoversKitchenLink?.populateKitchenLinkForm();
 }
 
 function renderInventory() {
@@ -1838,4 +1862,5 @@ window.LeftoversApp = {
   getCategories: () => getOrderedCategories().map((cat) => ({ id: cat.id, label: cat.label })),
   getSettings: () => settings,
   getShopping: () => shoppingItems,
+  reloadFromCloud,
 };
