@@ -63,6 +63,32 @@ const LEFTOVERS_ADD_DEFAULTS = {
   location: "Middle shelf",
 };
 
+const CATEGORY_ADD_DEFAULTS = {
+  drinks: {
+    container: "Original packaging",
+    location: "Top shelf",
+  },
+  "frozen-item": {
+    container: "Original packaging",
+    location: "Freezer",
+  },
+  "cooked-stuff": {
+    location: "Middle shelf",
+  },
+  condiments: {
+    container: "Original packaging",
+    location: "Door",
+  },
+  fruit: {
+    container: "Original packaging",
+    location: "Left drawer",
+  },
+  vegetables: {
+    container: "Original packaging",
+    location: "Right drawer",
+  },
+};
+
 const LEGACY_CATEGORY_MAP = {
   "cooked-meal": "cooked-stuff",
   "meat-poultry": "meat-chicken",
@@ -109,6 +135,7 @@ const PAGES = {
   "settings-locations": document.getElementById("page-settings-locations"),
   "settings-presets": document.getElementById("page-settings-presets"),
   "settings-inventory": document.getElementById("page-settings-inventory"),
+  "settings-notifications": document.getElementById("page-settings-notifications"),
   "settings-backup": document.getElementById("page-settings-backup"),
 };
 
@@ -118,6 +145,7 @@ const SETTINGS_DETAIL_PAGES = new Set([
   "settings-locations",
   "settings-presets",
   "settings-inventory",
+  "settings-notifications",
   "settings-backup",
 ]);
 
@@ -195,7 +223,7 @@ function init() {
 
   form.addEventListener("submit", handleSubmit);
   dateInput.addEventListener("change", updateEatByPreview);
-  categoryInput.addEventListener("change", updateEatByPreview);
+  categoryInput.addEventListener("change", handleCategoryChange);
   descriptionInput.addEventListener("input", () => applyPresetForDescription(descriptionInput.value));
   descriptionInput.addEventListener("change", () => applyPresetForDescription(descriptionInput.value));
 
@@ -228,6 +256,7 @@ function init() {
   migrateContainerSchema();
   migrateLocationSchema();
   migrateBuiltinLocations();
+  window.LeftoversNotifications?.bindNotificationsUI();
   navigateTo("home");
 }
 
@@ -366,6 +395,7 @@ function saveSettings() {
   if (currentPage === "fridge" && leftovers.length > 0) {
     renderFridgeCategoryFilters();
   }
+  window.LeftoversNotifications?.queueNotificationSync();
 }
 
 function getOrderedCategories() {
@@ -403,9 +433,27 @@ function applyPresetForDescription(text) {
   if (settings.categories.some((cat) => cat.id === preset.categoryId)) {
     categoryInput.value = preset.categoryId;
   }
+  applyCategoryDefaults(categoryInput.value);
   if (settings.locations.some((loc) => loc.label === preset.location)) {
     locationInput.value = preset.location;
   }
+  updateEatByPreview();
+}
+
+function applyCategoryDefaults(categoryId) {
+  const defaults = CATEGORY_ADD_DEFAULTS[categoryId];
+  if (!defaults) return;
+
+  if (defaults.container && settings.containers.some((item) => item.label === defaults.container)) {
+    containerInput.value = defaults.container;
+  }
+  if (defaults.location && settings.locations.some((item) => item.label === defaults.location)) {
+    locationInput.value = defaults.location;
+  }
+}
+
+function handleCategoryChange() {
+  applyCategoryDefaults(categoryInput.value);
   updateEatByPreview();
 }
 
@@ -548,6 +596,7 @@ function navigateTo(page) {
       }
       addFormDefaults = null;
     }
+    applyCategoryDefaults(categoryInput.value);
     updateEatByPreview();
     descriptionInput.focus();
   }
@@ -564,6 +613,7 @@ function loadLeftovers() {
 
 function saveLeftovers() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(leftovers));
+  window.LeftoversNotifications?.queueNotificationSync();
 }
 
 function loadShopping() {
@@ -1159,6 +1209,7 @@ function renderSettingsPage(page) {
     populatePresetFormSelects(settingsPresetsAddForm);
   }
   if (page === "settings-inventory") renderInventory();
+  if (page === "settings-notifications") window.LeftoversNotifications?.populateNotificationsForm();
 }
 
 function renderInventory() {
@@ -1662,3 +1713,8 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
+
+window.LeftoversApp = {
+  getLeftovers: () => leftovers,
+  getCategories: () => getOrderedCategories().map((cat) => ({ id: cat.id, label: cat.label })),
+};
