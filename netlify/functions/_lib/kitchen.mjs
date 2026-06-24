@@ -127,8 +127,9 @@ export async function supabaseRequest(env, path, options = {}) {
     throw new Error(`Supabase request failed (${response.status}): ${text}`);
   }
 
-  if (response.status === 204) return null;
-  return response.json();
+  const text = await response.text();
+  if (!text.trim()) return null;
+  return JSON.parse(text);
 }
 
 export async function upsertKitchenSync(env, row) {
