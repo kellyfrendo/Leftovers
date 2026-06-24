@@ -2,17 +2,21 @@ const STORAGE_KEY = "leftovers-fridge";
 const SHOPPING_STORAGE_KEY = "leftovers-shopping";
 const SETTINGS_STORAGE_KEY = "leftovers-settings";
 
+const BACKUP_VERSION = 1;
+const MAX_ITEM_QUANTITY = 30;
+
 const DEFAULT_SETTINGS = {
   categories: [
     { id: "fruit", label: "Fruit", days: 5 },
     { id: "vegetables", label: "Vegetables", days: 5 },
-    { id: "meat-chicken", label: "Meat and chicken", days: 3 },
-    { id: "fish-seafood", label: "Fish and seafood", days: 2 },
-    { id: "dairy", label: "Dairy", days: 5 },
-    { id: "condiments", label: "Condiments", days: 14 },
-    { id: "cooked-stuff", label: "Cooked stuff", days: 4 },
-    { id: "drinks", label: "Drinks", days: 5 },
-    { id: "other", label: "Other", days: 4 },
+    { id: "meat-chicken", label: "Meat and chicken", days: 5 },
+    { id: "fish-seafood", label: "Fish and seafood", days: 5 },
+    { id: "dairy", label: "Dairy", days: 14 },
+    { id: "condiments", label: "Condiments", days: 30 },
+    { id: "cooked-stuff", label: "Cooked stuff", days: 7 },
+    { id: "drinks", label: "Drinks", days: 60 },
+    { id: "frozen-item", label: "Frozen item", days: 90 },
+    { id: "other", label: "Other", days: 7 },
   ],
   containers: [
     { id: "glass-jar", label: "Glass jar" },
@@ -41,6 +45,19 @@ const DEFAULT_SETTINGS = {
 
 const LEFTOVERS_PAGE_CATEGORY_IDS = new Set(["cooked-stuff"]);
 
+const CATEGORY_ICONS = {
+  fruit: "🍎",
+  vegetables: "🥬",
+  "meat-chicken": "🍗",
+  "fish-seafood": "🐟",
+  dairy: "🧀",
+  condiments: "🫙",
+  "cooked-stuff": "🍲",
+  drinks: "🥤",
+  "frozen-item": "❄️",
+  other: "📦",
+};
+
 const LEFTOVERS_ADD_DEFAULTS = {
   categoryId: "cooked-stuff",
   location: "Middle shelf",
@@ -55,6 +72,12 @@ const LEGACY_CATEGORY_MAP = {
 
 const CATEGORY_SCHEMA_VERSION = "2";
 const CATEGORY_SCHEMA_KEY = "leftovers-category-schema";
+
+const CATEGORY_DAYS_SCHEMA_VERSION = "2";
+const CATEGORY_DAYS_SCHEMA_KEY = "leftovers-category-days-schema";
+
+const CATEGORY_BUILTIN_SCHEMA_VERSION = "1";
+const CATEGORY_BUILTIN_SCHEMA_KEY = "leftovers-category-builtin-schema";
 
 const LEGACY_CONTAINER_MAP = {
   "Square tub": "Square tub (small)",
@@ -71,6 +94,9 @@ const LEGACY_LOCATION_MAP = {
 const LOCATION_SCHEMA_VERSION = "1";
 const LOCATION_SCHEMA_KEY = "leftovers-location-schema";
 
+const LOCATION_BUILTIN_SCHEMA_VERSION = "1";
+const LOCATION_BUILTIN_SCHEMA_KEY = "leftovers-location-builtin-schema";
+
 const PAGES = {
   home: document.getElementById("page-home"),
   leftovers: document.getElementById("page-leftovers"),
@@ -78,7 +104,22 @@ const PAGES = {
   fridge: document.getElementById("page-fridge"),
   shopping: document.getElementById("page-shopping"),
   settings: document.getElementById("page-settings"),
+  "settings-categories": document.getElementById("page-settings-categories"),
+  "settings-containers": document.getElementById("page-settings-containers"),
+  "settings-locations": document.getElementById("page-settings-locations"),
+  "settings-presets": document.getElementById("page-settings-presets"),
+  "settings-inventory": document.getElementById("page-settings-inventory"),
+  "settings-backup": document.getElementById("page-settings-backup"),
 };
+
+const SETTINGS_DETAIL_PAGES = new Set([
+  "settings-categories",
+  "settings-containers",
+  "settings-locations",
+  "settings-presets",
+  "settings-inventory",
+  "settings-backup",
+]);
 
 let settings = loadSettings();
 let leftovers = loadLeftovers();
@@ -113,6 +154,13 @@ const shoppingForm = document.getElementById("shopping-form");
 const shoppingInput = document.getElementById("shopping-input");
 const shoppingList = document.getElementById("shopping-list");
 const shoppingEmpty = document.getElementById("shopping-empty");
+const shoppingExportBtn = document.getElementById("shopping-export");
+const exportBackupBtn = document.getElementById("settings-export");
+const importBackupBtn = document.getElementById("settings-import");
+const importBackupFile = document.getElementById("settings-import-file");
+const backupStatusEl = document.getElementById("settings-backup-status");
+const inventoryEmpty = document.getElementById("inventory-empty");
+const inventoryContent = document.getElementById("inventory-content");
 
 const SETTINGS_LISTS = {
   categories: document.getElementById("settings-categories-list"),
@@ -152,14 +200,15 @@ function init() {
   descriptionInput.addEventListener("change", () => applyPresetForDescription(descriptionInput.value));
 
   shoppingForm.addEventListener("submit", handleShoppingSubmit);
+  shoppingExportBtn.addEventListener("click", exportShoppingList);
 
   fridgeShowAllBtn.addEventListener("click", () => {
-    fridgeExcludedCategories.clear();
+    showAllFridgeCategories();
     renderFridgeOverview();
   });
 
   fridgeHideAllBtn.addEventListener("click", () => {
-    settings.categories.forEach((cat) => fridgeExcludedCategories.add(cat.id));
+    hideAllFridgeCategories();
     renderFridgeOverview();
   });
 
@@ -169,9 +218,16 @@ function init() {
 
   settingsPresetsAddForm.addEventListener("submit", handlePresetAdd);
 
+  exportBackupBtn.addEventListener("click", exportBackup);
+  importBackupBtn.addEventListener("click", () => importBackupFile.click());
+  importBackupFile.addEventListener("change", handleImportBackup);
+
   migrateCategorySchema();
+  migrateDefaultCategoryDays();
+  migrateBuiltinCategories();
   migrateContainerSchema();
   migrateLocationSchema();
+  migrateBuiltinLocations();
   navigateTo("home");
 }
 
@@ -193,6 +249,23 @@ function migrateLocationSchema() {
   saveSettings();
   saveLeftovers();
   localStorage.setItem(LOCATION_SCHEMA_KEY, LOCATION_SCHEMA_VERSION);
+}
+
+function migrateBuiltinLocations() {
+  if (localStorage.getItem(LOCATION_BUILTIN_SCHEMA_KEY) === LOCATION_BUILTIN_SCHEMA_VERSION) return;
+
+  DEFAULT_SETTINGS.locations.forEach((defaultLoc) => {
+    const hasId = settings.locations.some((loc) => loc.id === defaultLoc.id);
+    const hasLabel = settings.locations.some(
+      (loc) => loc.label.toLowerCase() === defaultLoc.label.toLowerCase()
+    );
+    if (hasId || hasLabel) return;
+
+    settings.locations.push(structuredClone(defaultLoc));
+  });
+
+  saveSettings();
+  localStorage.setItem(LOCATION_BUILTIN_SCHEMA_KEY, LOCATION_BUILTIN_SCHEMA_VERSION);
 }
 
 function migrateContainerSchema() {
@@ -230,6 +303,36 @@ function migrateCategorySchema() {
   localStorage.setItem(CATEGORY_SCHEMA_KEY, CATEGORY_SCHEMA_VERSION);
 }
 
+function migrateDefaultCategoryDays() {
+  if (localStorage.getItem(CATEGORY_DAYS_SCHEMA_KEY) === CATEGORY_DAYS_SCHEMA_VERSION) return;
+
+  const defaultDays = new Map(DEFAULT_SETTINGS.categories.map((cat) => [cat.id, cat.days]));
+  settings.categories.forEach((cat) => {
+    if (defaultDays.has(cat.id)) cat.days = defaultDays.get(cat.id);
+  });
+
+  saveSettings();
+  localStorage.setItem(CATEGORY_DAYS_SCHEMA_KEY, CATEGORY_DAYS_SCHEMA_VERSION);
+}
+
+function migrateBuiltinCategories() {
+  if (localStorage.getItem(CATEGORY_BUILTIN_SCHEMA_KEY) === CATEGORY_BUILTIN_SCHEMA_VERSION) return;
+
+  DEFAULT_SETTINGS.categories.forEach((defaultCat) => {
+    if (settings.categories.some((cat) => cat.id === defaultCat.id)) return;
+
+    const otherIndex = settings.categories.findIndex((cat) => cat.id === "other");
+    if (otherIndex >= 0) {
+      settings.categories.splice(otherIndex, 0, structuredClone(defaultCat));
+    } else {
+      settings.categories.push(structuredClone(defaultCat));
+    }
+  });
+
+  saveSettings();
+  localStorage.setItem(CATEGORY_BUILTIN_SCHEMA_KEY, CATEGORY_BUILTIN_SCHEMA_VERSION);
+}
+
 function openAddItemFromLeftovers() {
   returnPage = "leftovers";
   addFormDefaults = { ...LEFTOVERS_ADD_DEFAULTS };
@@ -260,10 +363,17 @@ function saveSettings() {
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   populateDropdowns();
   updateDescriptionDatalist();
+  if (currentPage === "fridge" && leftovers.length > 0) {
+    renderFridgeCategoryFilters();
+  }
+}
+
+function getOrderedCategories() {
+  return settings.categories;
 }
 
 function categoryOptionsHtml(selectedId) {
-  return settings.categories
+  return getOrderedCategories()
     .map(
       (cat) =>
         `<option value="${escapeHtml(cat.id)}"${cat.id === selectedId ? " selected" : ""}>${escapeHtml(cat.label)}</option>`
@@ -325,6 +435,10 @@ function getCategoryLabel(id) {
   return getCategoryById(id)?.label || id;
 }
 
+function getCategoryIcon(id) {
+  return CATEGORY_ICONS[id] || "🏷️";
+}
+
 function getCategoryDays(id) {
   return getCategoryById(id)?.days ?? 4;
 }
@@ -333,14 +447,28 @@ function getLocationLabels() {
   return settings.locations.map((item) => item.label);
 }
 
+function isFreezerLocation(label) {
+  if (!label) return false;
+  const setting = settings.locations.find((item) => item.label === label);
+  if (setting?.id === "freezer") return true;
+  return label.toLowerCase() === "freezer";
+}
+
+function sortLocationsWithFreezerLast(locations) {
+  const freezer = locations.filter(isFreezerLocation);
+  const rest = locations.filter((loc) => !isFreezerLocation(loc));
+  return [...rest, ...freezer];
+}
+
 function getOrderedLocationLabels() {
   const labels = getLocationLabels();
   const extras = [...new Set(leftovers.map((item) => item.location).filter((loc) => loc && !labels.includes(loc)))];
-  return [...labels, ...extras];
+  return sortLocationsWithFreezerLast([...labels, ...extras]);
 }
 
 function populateDropdowns() {
-  fillSelect(categoryInput, settings.categories, (item) => item.id, (item) => item.label);
+  populateQuantityDropdown();
+  fillSelect(categoryInput, getOrderedCategories(), (item) => item.id, (item) => item.label);
   fillSelect(containerInput, settings.containers, (item) => item.label, (item) => item.label);
   fillSelect(locationInput, settings.locations, (item) => item.label, (item) => item.label);
 }
@@ -352,6 +480,19 @@ function fillSelect(select, items, getValue, getLabel) {
     .join("");
   if (current && [...select.options].some((opt) => opt.value === current)) {
     select.value = current;
+  }
+}
+
+function populateQuantityDropdown() {
+  const current = quantityInput.value;
+  quantityInput.innerHTML = Array.from({ length: MAX_ITEM_QUANTITY }, (_, index) => {
+    const value = String(index + 1);
+    return `<option value="${value}">${value}</option>`;
+  }).join("");
+  if (current && Number(current) >= 1 && Number(current) <= MAX_ITEM_QUANTITY) {
+    quantityInput.value = current;
+  } else {
+    quantityInput.value = "1";
   }
 }
 
@@ -388,9 +529,12 @@ function navigateTo(page) {
   });
 
   if (page === "leftovers") renderLeftovers();
-  if (page === "fridge") renderFridgeOverview();
+  if (page === "fridge") {
+    hideAllFridgeCategories();
+    renderFridgeOverview();
+  }
   if (page === "shopping") renderShopping();
-  if (page === "settings") renderSettings();
+  if (SETTINGS_DETAIL_PAGES.has(page)) renderSettingsPage(page);
   if (page === "add") {
     populateDropdowns();
     updateDescriptionDatalist();
@@ -433,6 +577,103 @@ function loadShopping() {
 
 function saveShopping() {
   localStorage.setItem(SHOPPING_STORAGE_KEY, JSON.stringify(shoppingItems));
+}
+
+function buildBackupPayload() {
+  return {
+    version: BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    leftovers,
+    shopping: shoppingItems,
+    settings,
+  };
+}
+
+function exportBackup() {
+  const payload = buildBackupPayload();
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `leftovers-backup-${todayString()}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  setBackupStatus("Backup downloaded.");
+}
+
+function validateBackup(data) {
+  if (!data || typeof data !== "object") return "Invalid backup file.";
+  if (!Array.isArray(data.leftovers)) return "Backup is missing fridge items.";
+  if (!Array.isArray(data.shopping)) return "Backup is missing shopping list.";
+  if (!data.settings || typeof data.settings !== "object") return "Backup is missing settings.";
+  if (!Array.isArray(data.settings.categories) || !data.settings.categories.length) {
+    return "Backup settings are missing categories.";
+  }
+  if (!Array.isArray(data.settings.containers) || !data.settings.containers.length) {
+    return "Backup settings are missing containers.";
+  }
+  if (!Array.isArray(data.settings.locations) || !data.settings.locations.length) {
+    return "Backup settings are missing locations.";
+  }
+  if (!Array.isArray(data.settings.presets)) data.settings.presets = [];
+  return null;
+}
+
+function applyBackup(data) {
+  settings = data.settings;
+  leftovers = data.leftovers;
+  shoppingItems = data.shopping;
+  fridgeExcludedCategories.clear();
+  settingsEdit = { type: null, id: null };
+  saveSettings();
+  saveLeftovers();
+  saveShopping();
+  populateDropdowns();
+  updateDescriptionDatalist();
+  if (currentPage === "leftovers") renderLeftovers();
+  if (currentPage === "fridge") renderFridgeOverview();
+  if (currentPage === "shopping") renderShopping();
+  if (SETTINGS_DETAIL_PAGES.has(currentPage)) renderSettingsPage(currentPage);
+}
+
+function handleImportBackup(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const error = validateBackup(data);
+      if (error) {
+        setBackupStatus(error);
+        return;
+      }
+
+      const itemCount = data.leftovers.length;
+      const shoppingCount = data.shopping.length;
+      const message =
+        `Import this backup? It will replace your current data ` +
+        `(${itemCount} fridge item${itemCount === 1 ? "" : "s"}, ` +
+        `${shoppingCount} shopping item${shoppingCount === 1 ? "" : "s"}, and all settings).`;
+
+      if (!confirm(message)) {
+        setBackupStatus("Import cancelled.");
+        return;
+      }
+
+      applyBackup(data);
+      setBackupStatus("Import complete.");
+    } catch {
+      setBackupStatus("Could not read backup file. Make sure it is valid JSON.");
+    }
+  };
+  reader.readAsText(file);
+}
+
+function setBackupStatus(message) {
+  if (backupStatusEl) backupStatusEl.textContent = message;
 }
 
 function todayString() {
@@ -552,6 +793,25 @@ function removeLeftover(id) {
   saveLeftovers();
   if (currentPage === "leftovers") renderLeftovers();
   if (currentPage === "fridge") renderFridgeOverview();
+  if (currentPage === "settings-inventory") renderInventory();
+}
+
+function setLeftoverQuantity(id, quantity) {
+  const item = leftovers.find((entry) => entry.id === id);
+  if (!item) return;
+
+  const qty = Math.max(0, Math.min(MAX_ITEM_QUANTITY, Number(quantity) || 0));
+  if (qty <= 0) {
+    removeLeftover(id);
+    return;
+  }
+
+  if (qty === getItemQuantity(item)) return;
+
+  item.quantity = qty;
+  saveLeftovers();
+  if (currentPage === "leftovers") renderLeftovers();
+  if (currentPage === "fridge") renderFridgeOverview();
 }
 
 function reduceLeftoverQuantity(id) {
@@ -578,7 +838,7 @@ function increaseLeftoverQuantity(id) {
   const item = leftovers.find((entry) => entry.id === id);
   if (!item) return;
 
-  const nextQty = Math.min(getItemQuantity(item) + 1, 10);
+  const nextQty = Math.min(getItemQuantity(item) + 1, MAX_ITEM_QUANTITY);
   if (nextQty === getItemQuantity(item)) return;
 
   item.quantity = nextQty;
@@ -693,11 +953,11 @@ function renderLeftovers() {
           </div>
           <button
             type="button"
-            class="btn btn--ghost card__reduce"
+            class="btn btn--ghost btn--icon card__reduce"
             data-id="${item.id}"
             aria-label="Reduce ${escapeHtml(item.description)} quantity by 1"
           >
-            −1
+            <span aria-hidden="true">➖</span>
           </button>
         </li>
       `;
@@ -711,6 +971,15 @@ function renderLeftovers() {
   bindLocationSelects(leftoverList, ".card__location-select");
 }
 
+function hideAllFridgeCategories() {
+  fridgeExcludedCategories.clear();
+  settings.categories.forEach((cat) => fridgeExcludedCategories.add(cat.id));
+}
+
+function showAllFridgeCategories() {
+  fridgeExcludedCategories.clear();
+}
+
 function getFridgeVisibleLeftovers() {
   return leftovers.filter((item) => {
     const known = settings.categories.some((cat) => cat.id === item.category);
@@ -720,17 +989,19 @@ function getFridgeVisibleLeftovers() {
 }
 
 function renderFridgeCategoryFilters() {
-  fridgeCategoryFilters.innerHTML = settings.categories
+  fridgeCategoryFilters.innerHTML = getOrderedCategories()
     .map((cat) => {
       const included = !fridgeExcludedCategories.has(cat.id);
       return `
         <button
           type="button"
-          class="filter-btn ${included ? "filter-btn--active" : ""}"
+          class="filter-btn filter-btn--icon ${included ? "filter-btn--active" : ""}"
           data-category="${cat.id}"
           aria-pressed="${included}"
+          aria-label="${escapeHtml(cat.label)}"
+          title="${escapeHtml(cat.label)}"
         >
-          ${escapeHtml(cat.label)}
+          <span class="filter-btn__icon" aria-hidden="true">${getCategoryIcon(cat.id)}</span>
         </button>
       `;
     })
@@ -749,7 +1020,7 @@ function renderFridgeCategoryFilters() {
   });
 
   const allIncluded = fridgeExcludedCategories.size === 0;
-  const allExcluded = fridgeExcludedCategories.size >= settings.categories.length;
+  const allExcluded = fridgeExcludedCategories.size >= getOrderedCategories().length;
   fridgeShowAllBtn.disabled = allIncluded;
   fridgeShowAllBtn.setAttribute("aria-disabled", String(allIncluded));
   fridgeHideAllBtn.disabled = allExcluded;
@@ -816,20 +1087,36 @@ function renderFridgeOverview() {
                         <div class="location-item__actions">
                           <button
                             type="button"
-                            class="btn btn--ghost location-item__reduce"
+                            class="btn btn--ghost btn--icon location-item__reduce"
                             data-id="${item.id}"
                             aria-label="Reduce ${escapeHtml(item.description)} quantity by 1"
                           >
-                            −1
+                            <span aria-hidden="true">➖</span>
                           </button>
                           <button
                             type="button"
-                            class="btn btn--ghost location-item__increase"
+                            class="btn btn--ghost btn--icon location-item__increase"
                             data-id="${item.id}"
                             aria-label="Increase ${escapeHtml(item.description)} quantity by 1"
-                            ${getItemQuantity(item) >= 10 ? "disabled" : ""}
+                            ${getItemQuantity(item) >= MAX_ITEM_QUANTITY ? "disabled" : ""}
                           >
-                            +1
+                            <span aria-hidden="true">➕</span>
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn--ghost btn--icon location-item__shopping"
+                            data-id="${item.id}"
+                            aria-label="Add ${escapeHtml(item.description)} to shopping list"
+                          >
+                            <span aria-hidden="true">🛒</span>
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn--ghost btn--icon location-item__delete"
+                            data-id="${item.id}"
+                            aria-label="Remove ${escapeHtml(item.description)} from fridge"
+                          >
+                            <span aria-hidden="true">🗑️</span>
                           </button>
                         </div>
                       </div>
@@ -853,14 +1140,105 @@ function renderFridgeOverview() {
   fridgeByLocation.querySelectorAll(".location-item__increase").forEach((btn) => {
     btn.addEventListener("click", () => increaseLeftoverQuantity(btn.dataset.id));
   });
+
+  fridgeByLocation.querySelectorAll(".location-item__shopping").forEach((btn) => {
+    btn.addEventListener("click", () => addLeftoverToShoppingList(btn.dataset.id));
+  });
+
+  fridgeByLocation.querySelectorAll(".location-item__delete").forEach((btn) => {
+    btn.addEventListener("click", () => removeLeftover(btn.dataset.id));
+  });
 }
 
-function renderSettings() {
-  renderSettingsList("categories");
-  renderSettingsList("containers");
-  renderSettingsList("locations");
-  renderPresetsList();
-  populatePresetFormSelects(settingsPresetsAddForm);
+function renderSettingsPage(page) {
+  if (page === "settings-categories") renderSettingsList("categories");
+  if (page === "settings-containers") renderSettingsList("containers");
+  if (page === "settings-locations") renderSettingsList("locations");
+  if (page === "settings-presets") {
+    renderPresetsList();
+    populatePresetFormSelects(settingsPresetsAddForm);
+  }
+  if (page === "settings-inventory") renderInventory();
+}
+
+function renderInventory() {
+  const hasItems = leftovers.length > 0;
+  inventoryEmpty.classList.toggle("hidden", hasItems);
+  inventoryContent.classList.toggle("hidden", !hasItems);
+
+  if (!hasItems) {
+    inventoryContent.innerHTML = "";
+    return;
+  }
+
+  const byLocation = {};
+  leftovers.forEach((item) => {
+    const loc = item.location || "Unknown";
+    if (!byLocation[loc]) byLocation[loc] = [];
+    byLocation[loc].push(item);
+  });
+
+  const orderedLocations = getOrderedLocationLabels().filter((loc) => byLocation[loc]);
+  const unknownLocations = Object.keys(byLocation).filter((loc) => !orderedLocations.includes(loc)).sort();
+  const locations = sortLocationsWithFreezerLast([...orderedLocations, ...unknownLocations]);
+
+  inventoryContent.innerHTML = locations
+    .map((location) => {
+      const items = byLocation[location].sort((a, b) => a.description.localeCompare(b.description));
+      return `
+        <section class="panel inventory-group">
+          <h2 class="inventory-group__title">${escapeHtml(location)}</h2>
+          <div class="inventory-table-wrap">
+            <table class="inventory-table">
+              <thead>
+                <tr>
+                  <th scope="col">Item</th>
+                  <th scope="col">Category</th>
+                  <th scope="col" class="inventory-table__qty-col">Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items
+                  .map(
+                    (item) => `
+                  <tr>
+                    <td class="inventory-table__item">${escapeHtml(item.description)}</td>
+                    <td class="inventory-table__category">${escapeHtml(getCategoryLabel(item.category))}</td>
+                    <td class="inventory-table__qty">
+                      <input
+                        type="number"
+                        class="inventory-qty"
+                        data-id="${item.id}"
+                        min="0"
+                        max="${MAX_ITEM_QUANTITY}"
+                        step="1"
+                        inputmode="numeric"
+                        value="${getItemQuantity(item)}"
+                        aria-label="Quantity for ${escapeHtml(item.description)} in ${escapeHtml(location)}"
+                      />
+                    </td>
+                  </tr>
+                `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    })
+    .join("");
+
+  inventoryContent.querySelectorAll(".inventory-qty").forEach((input) => {
+    input.addEventListener("change", () => {
+      setLeftoverQuantity(input.dataset.id, input.value);
+      if (currentPage === "settings-inventory") renderInventory();
+    });
+  });
+}
+
+function renderCurrentSettingsPage() {
+  if (SETTINGS_DETAIL_PAGES.has(currentPage)) renderSettingsPage(currentPage);
 }
 
 function renderPresetsList() {
@@ -917,7 +1295,7 @@ function renderPresetsList() {
     editForm.addEventListener("submit", handleSettingsEditSave);
     editForm.querySelector('[data-action="cancel"]')?.addEventListener("click", () => {
       settingsEdit = { type: null, id: null };
-      renderSettings();
+      renderCurrentSettingsPage();
     });
   });
 }
@@ -945,7 +1323,7 @@ function handlePresetAdd(event) {
   saveSettings();
   formEl.reset();
   populatePresetFormSelects(formEl);
-  renderSettings();
+  renderCurrentSettingsPage();
 }
 
 function renderSettingsList(type) {
@@ -960,9 +1338,10 @@ function renderSettingsList(type) {
         if (type === "categories") {
           return `
             <li class="settings-item settings-item--editing">
-              <form class="settings-edit-form" data-setting-type="${type}" data-item-id="${item.id}">
+              <form class="settings-edit-form settings-edit-form--category" data-setting-type="${type}" data-item-id="${item.id}">
+                <span class="settings-item__icon" aria-hidden="true">${getCategoryIcon(item.id)}</span>
                 <input type="text" name="label" value="${escapeHtml(item.label)}" required maxlength="60" />
-                <input type="number" name="days" value="${item.days}" min="1" max="30" required aria-label="Days in fridge" />
+                <input type="number" name="days" value="${item.days}" min="1" max="90" required aria-label="Days in fridge" />
                 <div class="settings-item__actions">
                   <button type="submit" class="btn btn--primary btn--small">Save</button>
                   <button type="button" class="btn btn--ghost btn--small" data-action="cancel">Cancel</button>
@@ -986,13 +1365,20 @@ function renderSettingsList(type) {
       }
 
       const meta = type === "categories" ? `<span class="settings-item__meta">${item.days} days</span>` : "";
+      const categoryLabel =
+        type === "categories"
+          ? `<span class="settings-item__label settings-item__label--category">
+              <span class="settings-item__icon" aria-hidden="true">${getCategoryIcon(item.id)}</span>
+              ${escapeHtml(item.label)}
+            </span>`
+          : `<span class="settings-item__label">${escapeHtml(item.label)}</span>`;
       const canMoveUp = index > 0;
       const canMoveDown = index < items.length - 1;
 
       return `
         <li class="settings-item">
           <div class="settings-item__info">
-            <span class="settings-item__label">${escapeHtml(item.label)}</span>
+            ${categoryLabel}
             ${meta}
           </div>
           <div class="settings-item__actions">
@@ -1014,7 +1400,7 @@ function renderSettingsList(type) {
     editForm.addEventListener("submit", handleSettingsEditSave);
     editForm.querySelector('[data-action="cancel"]')?.addEventListener("click", () => {
       settingsEdit = { type: null, id: null };
-      renderSettings();
+      renderCurrentSettingsPage();
     });
   });
 }
@@ -1027,7 +1413,7 @@ function handleSettingsAction(btn) {
 
   if (action === "edit") {
     settingsEdit = { type, id };
-    renderSettings();
+    renderCurrentSettingsPage();
     return;
   }
 
@@ -1058,8 +1444,8 @@ function handleSettingsAdd(event) {
 
   saveSettings();
   formEl.reset();
-  if (type === "categories") formEl.days.value = 4;
-  renderSettings();
+  if (type === "categories") formEl.days.value = 7;
+  renderCurrentSettingsPage();
 }
 
 function handleSettingsEditSave(event) {
@@ -1089,7 +1475,7 @@ function handleSettingsEditSave(event) {
     item.location = location;
     settingsEdit = { type: null, id: null };
     saveSettings();
-    renderSettings();
+    renderCurrentSettingsPage();
     return;
   }
 
@@ -1115,7 +1501,7 @@ function handleSettingsEditSave(event) {
 
   settingsEdit = { type: null, id: null };
   saveSettings();
-  renderSettings();
+  renderCurrentSettingsPage();
 }
 
 function moveSettingItem(type, id, direction) {
@@ -1128,14 +1514,14 @@ function moveSettingItem(type, id, direction) {
   const [moved] = items.splice(index, 1);
   items.splice(newIndex, 0, moved);
   saveSettings();
-  renderSettings();
+  renderCurrentSettingsPage();
 }
 
 function deleteSettingItem(type, id) {
   if (type === "presets") {
     settings.presets = settings.presets.filter((entry) => entry.id !== id);
     saveSettings();
-    renderSettings();
+    renderCurrentSettingsPage();
     return;
   }
 
@@ -1157,7 +1543,45 @@ function deleteSettingItem(type, id) {
 
   settings[type] = items.filter((entry) => entry.id !== id);
   saveSettings();
-  renderSettings();
+  renderCurrentSettingsPage();
+}
+
+function buildShoppingListExportText() {
+  const lines = shoppingItems.map((item) => (item.checked ? `✓ ${item.text}` : item.text));
+  return `Shopping List\n\n${lines.join("\n")}\n`;
+}
+
+async function exportShoppingList() {
+  if (!shoppingItems.length) {
+    alert("Your shopping list is empty.");
+    return;
+  }
+
+  const content = buildShoppingListExportText();
+  const filename = `shopping-list-${todayString()}.txt`;
+  const file = new File([content], filename, { type: "text/plain" });
+
+  try {
+    if (navigator.share) {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: "Shopping List" });
+        return;
+      }
+
+      await navigator.share({ text: content, title: "Shopping List" });
+      return;
+    }
+  } catch (error) {
+    if (error.name === "AbortError") return;
+  }
+
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function handleShoppingSubmit(event) {
@@ -1175,6 +1599,14 @@ function handleShoppingSubmit(event) {
 function addToShoppingList(text) {
   shoppingItems.push({ id: crypto.randomUUID(), text, checked: false });
   saveShopping();
+}
+
+function addLeftoverToShoppingList(id) {
+  const item = leftovers.find((entry) => entry.id === id);
+  if (!item) return;
+
+  addToShoppingList(item.description);
+  if (currentPage === "shopping") renderShopping();
 }
 
 function toggleShoppingItem(id) {
@@ -1195,6 +1627,7 @@ function renderShopping() {
   const hasItems = shoppingItems.length > 0;
   shoppingEmpty.classList.toggle("hidden", hasItems);
   shoppingList.classList.toggle("hidden", !hasItems);
+  shoppingExportBtn.disabled = !hasItems;
 
   if (!hasItems) {
     shoppingList.innerHTML = "";

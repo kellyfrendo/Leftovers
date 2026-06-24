@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#2b6cb0" />
     <title>Leftovers — Fridge Tracker</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="styles.css?v=2" />
+    <link rel="stylesheet" href="styles.css?v=4" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -37,13 +37,13 @@
         <nav class="home-nav" aria-label="Main menu">
           <button type="button" class="home-nav__btn" data-page="fridge">
             <span class="home-nav__icon" aria-hidden="true">🧊</span>
-            <span class="home-nav__label">What's In Our Fridge</span>
-            <span class="home-nav__desc">Browse by location</span>
+            <span class="home-nav__label">What's In Our Fridge?</span>
+            <span class="home-nav__desc">Browse by location.</span>
           </button>
           <button type="button" class="home-nav__btn" data-page="leftovers">
             <span class="home-nav__icon" aria-hidden="true">🥡</span>
             <span class="home-nav__label">View Leftovers</span>
-            <span class="home-nav__desc">Find cooked stuff that needs to be eaten</span>
+            <span class="home-nav__desc">Find cooked stuff that needs to be eaten.</span>
           </button>
           <button type="button" class="home-nav__btn" data-page="shopping">
             <span class="home-nav__icon" aria-hidden="true">🛒</span>
@@ -53,7 +53,7 @@
           <button type="button" class="home-nav__btn home-nav__btn--settings" data-page="settings">
             <span class="home-nav__icon" aria-hidden="true">⚙️</span>
             <span class="home-nav__label">Settings</span>
-            <span class="home-nav__desc">Manage categories, containers, and locations</span>
+            <span class="home-nav__desc">Manage dropdowns and preferences.</span>
           </button>
         </nav>
       </section>
@@ -124,18 +124,7 @@
 
             <label class="field field--narrow">
               <span class="field__label">Quantity</span>
-              <select id="quantity" name="quantity" required>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
-                <option value="6">6</option>
-                <option value="7">7</option>
-                <option value="8">8</option>
-                <option value="9">9</option>
-                <option value="10">10</option>
-              </select>
+              <select id="quantity" name="quantity" required></select>
             </label>
 
             <div class="form__row">
@@ -165,20 +154,32 @@
             </button>
           </div>
           <div class="page-header__title">
-            <h1>What's In Our Fridge</h1>
+            <h1>What's In Our Fridge?</h1>
             <p class="page-header__subtitle" id="fridge-summary"></p>
           </div>
         </header>
 
         <div id="fridge-filters-panel" class="panel fridge-filters hidden">
           <div class="fridge-filters__header">
-            <h2 class="fridge-filters__title">Show categories</h2>
+            <h2 class="fridge-filters__title">Filter</h2>
             <div class="fridge-filters__actions">
-              <button type="button" id="fridge-hide-all" class="btn btn--ghost btn--small fridge-filters__toggle-all">
-                Hide All
+              <button
+                type="button"
+                id="fridge-hide-all"
+                class="btn btn--ghost btn--small btn--icon fridge-filters__toggle-all"
+                aria-label="Hide all categories"
+                title="Hide all"
+              >
+                <span aria-hidden="true">🚫</span>
               </button>
-              <button type="button" id="fridge-show-all" class="btn btn--primary btn--small fridge-filters__toggle-all">
-                Show All
+              <button
+                type="button"
+                id="fridge-show-all"
+                class="btn btn--primary btn--small btn--icon fridge-filters__toggle-all"
+                aria-label="Show all categories"
+                title="Show all"
+              >
+                <span aria-hidden="true">✅</span>
               </button>
             </div>
           </div>
@@ -202,7 +203,10 @@
 
       <section id="page-shopping" class="page hidden">
         <header class="page-header">
-          <button type="button" class="btn btn--back" data-page="home">← Home</button>
+          <div class="page-header__actions">
+            <button type="button" class="btn btn--back" data-page="home">← Home</button>
+            <button type="button" id="shopping-export" class="btn btn--ghost btn--small">Export</button>
+          </div>
           <div class="page-header__title">
             <h1>Shopping List</h1>
           </div>
@@ -240,57 +244,170 @@
           <button type="button" class="btn btn--back" data-page="home">← Home</button>
           <div class="page-header__title">
             <h1>Settings</h1>
-            <p class="page-header__subtitle">Manage dropdown options for the app</p>
+            <p class="page-header__subtitle">Manage dropdowns and preferences.</p>
           </div>
         </header>
 
-        <div class="settings-sections">
-          <section class="panel settings-section" aria-labelledby="settings-categories-heading">
-            <h2 id="settings-categories-heading">Category</h2>
-            <p class="settings-section__hint">Includes days in fridge for eat-by dates.</p>
-            <ul id="settings-categories-list" class="settings-list"></ul>
-            <form id="settings-categories-add" class="settings-add-form" data-setting-type="categories">
-              <input type="text" name="label" placeholder="Category name" required maxlength="60" />
-              <input type="number" name="days" placeholder="Days" min="1" max="30" value="4" required aria-label="Days in fridge" />
-              <button type="submit" class="btn btn--primary btn--small">Add</button>
-            </form>
-          </section>
+        <nav class="home-nav settings-menu" aria-label="Settings">
+          <button type="button" class="home-nav__btn" data-page="settings-categories">
+            <span class="home-nav__icon" aria-hidden="true">🏷️</span>
+            <span class="home-nav__label">Category</span>
+            <span class="home-nav__desc">Types of foods and eat-by dates.</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="settings-containers">
+            <span class="home-nav__icon" aria-hidden="true">📦</span>
+            <span class="home-nav__label">Container</span>
+            <span class="home-nav__desc">Tubs, jars, and packaging options.</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="settings-locations">
+            <span class="home-nav__icon" aria-hidden="true">📍</span>
+            <span class="home-nav__label">Location</span>
+            <span class="home-nav__desc">Fridge, freezer and cupboard locations.</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="settings-presets">
+            <span class="home-nav__icon" aria-hidden="true">⚡</span>
+            <span class="home-nav__label">Shortcuts</span>
+            <span class="home-nav__desc">Shortcuts that make data entry quicker.</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="settings-inventory">
+            <span class="home-nav__icon" aria-hidden="true">📋</span>
+            <span class="home-nav__label">Inventory</span>
+            <span class="home-nav__desc">Run a quick inventory check.</span>
+          </button>
+          <button type="button" class="home-nav__btn home-nav__btn--settings" data-page="settings-backup">
+            <span class="home-nav__icon" aria-hidden="true">💾</span>
+            <span class="home-nav__label">Backup</span>
+            <span class="home-nav__desc">Export or import your data.</span>
+          </button>
+        </nav>
+      </section>
 
-          <section class="panel settings-section" aria-labelledby="settings-containers-heading">
-            <h2 id="settings-containers-heading">Container</h2>
-            <ul id="settings-containers-list" class="settings-list"></ul>
-            <form id="settings-containers-add" class="settings-add-form" data-setting-type="containers">
-              <input type="text" name="label" placeholder="Container name" required maxlength="60" />
-              <button type="submit" class="btn btn--primary btn--small">Add</button>
-            </form>
-          </section>
+      <section id="page-settings-categories" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="settings">← Settings</button>
+          <div class="page-header__title">
+            <h1>Category</h1>
+            <p class="page-header__subtitle">Includes days in fridge for eat-by dates.</p>
+          </div>
+        </header>
 
-          <section class="panel settings-section" aria-labelledby="settings-locations-heading">
-            <h2 id="settings-locations-heading">Location</h2>
-            <ul id="settings-locations-list" class="settings-list"></ul>
-            <form id="settings-locations-add" class="settings-add-form" data-setting-type="locations">
-              <input type="text" name="label" placeholder="Location name" required maxlength="60" />
-              <button type="submit" class="btn btn--primary btn--small">Add</button>
-            </form>
-          </section>
+        <section class="panel settings-section" aria-labelledby="settings-categories-heading">
+          <h2 id="settings-categories-heading" class="visually-hidden">Category</h2>
+          <ul id="settings-categories-list" class="settings-list"></ul>
+          <form id="settings-categories-add" class="settings-add-form" data-setting-type="categories">
+            <input type="text" name="label" placeholder="Category name" required maxlength="60" />
+            <input type="number" name="days" placeholder="Days" min="1" max="90" value="7" required aria-label="Days in fridge" />
+            <button type="submit" class="btn btn--primary btn--small">Add</button>
+          </form>
+        </section>
+      </section>
 
-          <section class="panel settings-section" aria-labelledby="settings-presets-heading">
-            <h2 id="settings-presets-heading">Food shortcuts</h2>
-            <p class="settings-section__hint">
+      <section id="page-settings-containers" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="settings">← Settings</button>
+          <div class="page-header__title">
+            <h1>Container</h1>
+          </div>
+        </header>
+
+        <section class="panel settings-section" aria-labelledby="settings-containers-heading">
+          <h2 id="settings-containers-heading" class="visually-hidden">Container</h2>
+          <ul id="settings-containers-list" class="settings-list"></ul>
+          <form id="settings-containers-add" class="settings-add-form" data-setting-type="containers">
+            <input type="text" name="label" placeholder="Container name" required maxlength="60" />
+            <button type="submit" class="btn btn--primary btn--small">Add</button>
+          </form>
+        </section>
+      </section>
+
+      <section id="page-settings-locations" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="settings">← Settings</button>
+          <div class="page-header__title">
+            <h1>Location</h1>
+          </div>
+        </header>
+
+        <section class="panel settings-section" aria-labelledby="settings-locations-heading">
+          <h2 id="settings-locations-heading" class="visually-hidden">Location</h2>
+          <ul id="settings-locations-list" class="settings-list"></ul>
+          <form id="settings-locations-add" class="settings-add-form" data-setting-type="locations">
+            <input type="text" name="label" placeholder="Location name" required maxlength="60" />
+            <button type="submit" class="btn btn--primary btn--small">Add</button>
+          </form>
+        </section>
+      </section>
+
+      <section id="page-settings-presets" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="settings">← Settings</button>
+          <div class="page-header__title">
+            <h1>Food shortcuts</h1>
+            <p class="page-header__subtitle">
               Match a description when adding items to fill in category and location automatically.
             </p>
-            <ul id="settings-presets-list" class="settings-list"></ul>
-            <form id="settings-presets-add" class="settings-preset-add-form">
-              <input type="text" name="description" placeholder="Description e.g. Water" required maxlength="120" />
-              <select name="categoryId" required aria-label="Default category"></select>
-              <select name="location" required aria-label="Default location"></select>
-              <button type="submit" class="btn btn--primary btn--small">Add</button>
-            </form>
-          </section>
+          </div>
+        </header>
+
+        <section class="panel settings-section" aria-labelledby="settings-presets-heading">
+          <h2 id="settings-presets-heading" class="visually-hidden">Food shortcuts</h2>
+          <ul id="settings-presets-list" class="settings-list"></ul>
+          <form id="settings-presets-add" class="settings-preset-add-form">
+            <input type="text" name="description" placeholder="Description e.g. Water" required maxlength="120" />
+            <select name="categoryId" required aria-label="Default category"></select>
+            <select name="location" required aria-label="Default location"></select>
+            <button type="submit" class="btn btn--primary btn--small">Add</button>
+          </form>
+        </section>
+      </section>
+
+      <section id="page-settings-inventory" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="settings">← Settings</button>
+          <div class="page-header__title">
+            <h1>Inventory</h1>
+            <p class="page-header__subtitle">Update quantities for everything in the fridge.</p>
+          </div>
+        </header>
+
+        <div id="inventory-empty" class="empty-state hidden">
+          <p class="empty-state__icon" aria-hidden="true">📋</p>
+          <p class="empty-state__title">Nothing to count</p>
+          <p class="empty-state__text">Add items to the fridge first, then run an inventory check here.</p>
         </div>
+
+        <div id="inventory-content" class="inventory-content" aria-live="polite"></div>
+      </section>
+
+      <section id="page-settings-backup" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="settings">← Settings</button>
+          <div class="page-header__title">
+            <h1>Backup</h1>
+            <p class="page-header__subtitle">
+              Export your fridge items, shopping list, and settings to a file. Import a backup to restore on this or another device.
+            </p>
+          </div>
+        </header>
+
+        <section class="panel settings-section" aria-labelledby="settings-backup-heading">
+          <h2 id="settings-backup-heading" class="visually-hidden">Backup</h2>
+          <div class="settings-backup__actions">
+            <button type="button" id="settings-export" class="btn btn--primary">Export</button>
+            <button type="button" id="settings-import" class="btn btn--ghost">Import</button>
+            <input
+              type="file"
+              id="settings-import-file"
+              class="hidden"
+              accept="application/json,.json"
+              aria-label="Choose backup file to import"
+            />
+          </div>
+          <p id="settings-backup-status" class="settings-backup__status" role="status" aria-live="polite"></p>
+        </section>
       </section>
     </div>
 
-    <script src="app.js?v=2"></script>
+    <script src="app.js?v=5"></script>
   </body>
 </html>
