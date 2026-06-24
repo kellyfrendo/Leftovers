@@ -156,13 +156,16 @@ export async function upsertKitchenSync(env, row) {
 
   const legacy = await fetchKitchenByDeviceId(env, row.device_id);
   if (legacy) {
-    return patchKitchen(env, legacy.kitchen_key, row);
+    if (legacy.kitchen_key) {
+      return patchKitchen(env, legacy.kitchen_key, row);
+    }
+    return patchKitchenByDeviceId(env, legacy.device_id, row);
   }
 
-  return supabaseRequest(env, "kitchen_sync?on_conflict=kitchen_key", {
+  return supabaseRequest(env, "kitchen_sync", {
     method: "POST",
     headers: {
-      Prefer: "resolution=merge-duplicates,return=minimal",
+      Prefer: "return=minimal",
     },
     body: JSON.stringify(row),
   });
@@ -170,6 +173,16 @@ export async function upsertKitchenSync(env, row) {
 
 function patchKitchen(env, currentKitchenKey, row) {
   return supabaseRequest(env, `kitchen_sync?kitchen_key=eq.${encodeURIComponent(currentKitchenKey)}`, {
+    method: "PATCH",
+    headers: {
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(row),
+  });
+}
+
+function patchKitchenByDeviceId(env, deviceId, row) {
+  return supabaseRequest(env, `kitchen_sync?device_id=eq.${encodeURIComponent(deviceId)}`, {
     method: "PATCH",
     headers: {
       Prefer: "return=minimal",

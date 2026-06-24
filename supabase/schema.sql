@@ -19,14 +19,15 @@ create index if not exists kitchen_sync_notifications_enabled_idx
   on public.kitchen_sync (notifications_enabled)
   where notifications_enabled = true;
 
--- If you already have kitchen_sync with device_id as the primary key, run this migration:
+-- If you already have kitchen_sync with device_id as the primary key, run ALL of this:
 --
 -- alter table public.kitchen_sync add column if not exists kitchen_key text;
--- update public.kitchen_sync set kitchen_key = device_id::text where kitchen_key is null;
--- alter table public.kitchen_sync drop constraint if exists kitchen_sync_pkey;
--- alter table public.kitchen_sync add primary key (kitchen_key);
 -- alter table public.kitchen_sync add column if not exists shopping jsonb not null default '[]'::jsonb;
 -- alter table public.kitchen_sync add column if not exists settings jsonb not null default '{}'::jsonb;
+-- update public.kitchen_sync set kitchen_key = device_id::text where kitchen_key is null;
+-- alter table public.kitchen_sync alter column kitchen_key set not null;
+-- alter table public.kitchen_sync drop constraint if exists kitchen_sync_pkey;
+-- alter table public.kitchen_sync add primary key (kitchen_key);
 --
 -- After migrating, open the app on one device, go to Settings → Shared kitchen,
 -- copy the code, and enter it on your other devices.
