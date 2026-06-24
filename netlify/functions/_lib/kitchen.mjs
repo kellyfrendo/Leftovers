@@ -95,8 +95,23 @@ export function buildEmailHtml({ overdue, dueSoon, notifyDaysBefore }) {
   `;
 }
 
+function normalizeSupabaseUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) throw new Error("SUPABASE_URL is not set");
+
+  if (/^[a-z0-9-]+$/i.test(value)) {
+    return `https://${value}.supabase.co`;
+  }
+
+  if (!/^https?:\/\//i.test(value)) {
+    return `https://${value.replace(/^\/+/, "")}`;
+  }
+
+  return value.replace(/\/$/, "");
+}
+
 export async function supabaseRequest(env, path, options = {}) {
-  const url = `${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/${path}`;
+  const url = `${normalizeSupabaseUrl(env.SUPABASE_URL)}/rest/v1/${path}`;
   const response = await fetch(url, {
     ...options,
     headers: {
