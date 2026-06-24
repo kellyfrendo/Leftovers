@@ -132,6 +132,14 @@ export async function supabaseRequest(env, path, options = {}) {
   return JSON.parse(text);
 }
 
+export async function fetchKitchenByDeviceId(env, deviceId) {
+  const rows = await supabaseRequest(
+    env,
+    `kitchen_sync?device_id=eq.${encodeURIComponent(deviceId)}&select=device_id,email,notify_days_before,notifications_enabled,leftovers,shopping,settings,categories,updated_at,last_notified_date`
+  );
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
 export async function upsertKitchenSync(env, row) {
   return supabaseRequest(env, "kitchen_sync?on_conflict=device_id", {
     method: "POST",
@@ -145,7 +153,7 @@ export async function upsertKitchenSync(env, row) {
 export async function fetchEnabledKitchens(env) {
   return supabaseRequest(
     env,
-    "kitchen_sync?notifications_enabled=eq.true&email=not.is.null&select=device_id,email,notify_days_before,leftovers,categories,last_notified_date"
+    "kitchen_sync?notifications_enabled=eq.true&email=not.is.null&select=device_id,email,notify_days_before,leftovers,categories,settings,last_notified_date"
   );
 }
 

@@ -581,6 +581,39 @@ body {
   display: none !important;
 }
 
+.app-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg, #f4f7fb);
+}
+
+.app-loading__text {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+}
+
+.app-error {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 101;
+  margin: 0;
+  padding: 1rem 1.25rem;
+  background: #fde8e8;
+  color: var(--overdue, #c53030);
+  text-align: center;
+}
+
+.app--loading {
+  visibility: hidden;
+}
+
 .page.hidden {
   display: none !important;
 }

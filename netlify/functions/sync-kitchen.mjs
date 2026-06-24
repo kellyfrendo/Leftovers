@@ -1,4 +1,5 @@
 import {
+  fetchKitchenByDeviceId,
   upsertKitchenSync,
 } from "./_lib/kitchen.mjs";
 
@@ -20,7 +21,18 @@ function validatePayload(body) {
   if (typeof body.notifications_enabled !== "boolean") return "Missing notifications_enabled.";
   if (!Number.isInteger(body.notify_days_before)) return "Missing notify_days_before.";
   if (!Array.isArray(body.leftovers)) return "Missing leftovers.";
-  if (!Array.isArray(body.categories)) return "Missing categories.";
+  if (!Array.isArray(body.shopping)) return "Missing shopping.";
+  if (!body.settings || typeof body.settings !== "object") return "Missing settings.";
+  if (!Array.isArray(body.settings.categories) || !body.settings.categories.length) {
+    return "Missing settings categories.";
+  }
+  if (!Array.isArray(body.settings.containers) || !body.settings.containers.length) {
+    return "Missing settings containers.";
+  }
+  if (!Array.isArray(body.settings.locations) || !body.settings.locations.length) {
+    return "Missing settings locations.";
+  }
+  if (!Array.isArray(body.settings.presets)) body.settings.presets = [];
   return null;
 }
 
@@ -29,16 +41,32 @@ export default async (request) => {
     return jsonResponse({ ok: true });
   }
 
-  if (request.method !== "POST") {
-    return jsonResponse({ ok: false, error: "Method not allowed." }, 405);
-  }
-
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return jsonResponse(
       { ok: false, error: "Server sync is not configured yet. Add Supabase env vars in Netlify." },
       503
     );
+  }
+
+  const env = { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY };
+
+  if (request.method === "GET") {
+    const deviceId = new URL(request.url).searchParams.get("device_id");
+    if (!deviceId) {
+      return jsonResponse({ ok: false, error: "Missing device_id." }, 400);
+    }
+
+    try {
+      const kitchen = await fetchKitchenByDeviceId(env, deviceId);
+      return jsonResponse({ ok: true, kitchen });
+    } catch (error) {
+      return jsonResponse({ ok: false, error: error.message || "Load failed." }, 500);
+    }
+  }
+
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "Method not allowed." }, 405);
   }
 
   let body;
@@ -58,19 +86,23 @@ export default async (request) => {
     return jsonResponse({ ok: false, error: "Email is required when notifications are enabled." }, 400);
   }
 
+  const categories = body.settings.categories.map((cat) => ({
+    id: cat.id,
+    label: cat.label,
+  }));
+
   try {
-    await upsertKitchenSync(
-      { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY },
-      {
-        device_id: body.device_id,
-        email,
-        notify_days_before: body.notify_days_before,
-        notifications_enabled: body.notifications_enabled,
-        leftovers: body.leftovers,
-        categories: body.categories,
-        updated_at: new Date().toISOString(),
-      }
-    );
+    await upsertKitchenSync(env, {
+      device_id: body.device_id,
+      email,
+      notify_days_before: body.notify_days_before,
+      notifications_enabled: body.notifications_enabled,
+      leftovers: body.leftovers,
+      shopping: body.shopping,
+      settings: body.settings,
+      categories,
+      updated_at: new Date().toISOString(),
+    });
 
     return jsonResponse({ ok: true, syncedAt: new Date().toISOString() });
   } catch (error) {

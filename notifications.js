@@ -1,49 +1,31 @@
-const NOTIFICATIONS_STORAGE_KEY = "leftovers-notifications";
-const DEVICE_ID_KEY = "leftovers-device-id";
-
 const DEFAULT_NOTIFICATIONS = {
   enabled: false,
   email: "",
   daysBefore: 3,
-  lastSyncedAt: null,
-  lastSyncError: null,
 };
 
-let syncTimer = null;
+let notificationSettings = structuredClone(DEFAULT_NOTIFICATIONS);
 
-function getDeviceId() {
-  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
-  if (!deviceId) {
-    deviceId = crypto.randomUUID();
-    localStorage.setItem(DEVICE_ID_KEY, deviceId);
-  }
-  return deviceId;
+function getSettings() {
+  return { ...notificationSettings };
 }
 
-function loadNotificationSettings() {
-  try {
-    const raw = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
-    if (!raw) return structuredClone(DEFAULT_NOTIFICATIONS);
-    const parsed = JSON.parse(raw);
-    return {
-      enabled: Boolean(parsed.enabled),
-      email: typeof parsed.email === "string" ? parsed.email : "",
-      daysBefore: Number.isInteger(parsed.daysBefore) ? parsed.daysBefore : 3,
-      lastSyncedAt: parsed.lastSyncedAt || null,
-      lastSyncError: parsed.lastSyncError || null,
-    };
-  } catch {
-    return structuredClone(DEFAULT_NOTIFICATIONS);
-  }
+function applyFromCloud({ enabled, email, daysBefore }) {
+  notificationSettings = {
+    enabled: Boolean(enabled),
+    email: typeof email === "string" ? email : "",
+    daysBefore: Number.isInteger(daysBefore) ? daysBefore : 3,
+  };
 }
 
-function saveNotificationSettings(next) {
-  localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(next));
-}
+function applyLegacyLocal(notifications) {
+  if (!notifications || typeof notifications !== "object") return;
 
-function getSyncUrl() {
-  if (window.location.protocol === "file:") return null;
-  return `${window.location.origin}/.netlify/functions/sync-kitchen`;
+  notificationSettings = {
+    enabled: Boolean(notifications.enabled),
+    email: typeof notifications.email === "string" ? notifications.email : "",
+    daysBefore: Number.isInteger(notifications.daysBefore) ? notifications.daysBefore : 3,
+  };
 }
 
 function formatSyncTime(isoString) {
@@ -64,99 +46,32 @@ function setNotificationsStatus(message, isError = false) {
   statusEl.style.color = isError ? "var(--overdue)" : "var(--text-muted)";
 }
 
+function refreshNotificationsStatus() {
+  const syncStatus = window.LeftoversCloud?.getSyncStatus() || {};
+
+  if (syncStatus.lastSyncError) {
+    setNotificationsStatus(`Last save failed: ${syncStatus.lastSyncError}`, true);
+  } else if (syncStatus.saving) {
+    setNotificationsStatus("Saving to cloud…");
+  } else if (syncStatus.lastSyncedAt) {
+    setNotificationsStatus(`Last saved ${formatSyncTime(syncStatus.lastSyncedAt)}.`);
+  } else if (!window.LeftoversCloud?.isAvailable()) {
+    setNotificationsStatus("Open the Netlify-deployed app to use cloud storage.", true);
+  } else {
+    setNotificationsStatus("Your kitchen is stored in the cloud.");
+  }
+}
+
 function populateNotificationsForm() {
-  const settings = loadNotificationSettings();
   const enabledInput = document.getElementById("notifications-enabled");
   const emailInput = document.getElementById("notifications-email");
   const daysInput = document.getElementById("notifications-days");
   if (!enabledInput || !emailInput || !daysInput) return;
 
-  enabledInput.checked = settings.enabled;
-  emailInput.value = settings.email;
-  daysInput.value = String(settings.daysBefore);
-
-  if (settings.lastSyncError) {
-    setNotificationsStatus(`Last sync failed: ${settings.lastSyncError}`, true);
-  } else if (settings.lastSyncedAt) {
-    setNotificationsStatus(`Last synced ${formatSyncTime(settings.lastSyncedAt)}.`);
-  } else if (!getSyncUrl()) {
-    setNotificationsStatus("Sync works after the app is deployed to Netlify.");
-  } else {
-    setNotificationsStatus("Not synced yet.");
-  }
-}
-
-async function syncNotificationsToCloud({ force = false } = {}) {
-  const current = loadNotificationSettings();
-  const syncUrl = getSyncUrl();
-
-  if (!syncUrl) {
-    const next = { ...current, lastSyncError: "Sync is only available on Netlify." };
-    saveNotificationSettings(next);
-    setNotificationsStatus(next.lastSyncError, true);
-    return { ok: false, error: next.lastSyncError };
-  }
-
-  if (!current.enabled && !force) {
-    return { ok: true, skipped: true };
-  }
-
-  if (current.enabled && !current.email.trim()) {
-    const error = "Add an email address to enable notifications.";
-    const next = { ...current, lastSyncError: error };
-    saveNotificationSettings(next);
-    setNotificationsStatus(error, true);
-    return { ok: false, error };
-  }
-
-  const payload = {
-    device_id: getDeviceId(),
-    email: current.email.trim(),
-    notifications_enabled: current.enabled,
-    notify_days_before: current.daysBefore,
-    leftovers: window.LeftoversApp.getLeftovers(),
-    categories: window.LeftoversApp.getCategories(),
-  };
-
-  try {
-    const response = await fetch(syncUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok || !data.ok) {
-      throw new Error(data.error || "Sync failed.");
-    }
-
-    const next = {
-      ...current,
-      lastSyncedAt: data.syncedAt || new Date().toISOString(),
-      lastSyncError: null,
-    };
-    saveNotificationSettings(next);
-    setNotificationsStatus(`Last synced ${formatSyncTime(next.lastSyncedAt)}.`);
-    return { ok: true };
-  } catch (error) {
-    const next = {
-      ...current,
-      lastSyncError: error.message || "Sync failed.",
-    };
-    saveNotificationSettings(next);
-    setNotificationsStatus(`Last sync failed: ${next.lastSyncError}`, true);
-    return { ok: false, error: next.lastSyncError };
-  }
-}
-
-function queueNotificationSync() {
-  const current = loadNotificationSettings();
-  if (!current.enabled) return;
-
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => {
-    syncNotificationsToCloud();
-  }, 800);
+  enabledInput.checked = notificationSettings.enabled;
+  emailInput.value = notificationSettings.email;
+  daysInput.value = String(notificationSettings.daysBefore);
+  refreshNotificationsStatus();
 }
 
 function handleNotificationsSave(event) {
@@ -176,15 +91,16 @@ function handleNotificationsSave(event) {
     return;
   }
 
-  const previous = loadNotificationSettings();
-  const next = {
-    ...previous,
+  notificationSettings = {
     enabled,
     email,
     daysBefore,
   };
-  saveNotificationSettings(next);
-  syncNotificationsToCloud({ force: true });
+
+  window.LeftoversCloud?.saveNow().then(
+    () => refreshNotificationsStatus(),
+    () => refreshNotificationsStatus()
+  );
 }
 
 function bindNotificationsUI() {
@@ -193,15 +109,22 @@ function bindNotificationsUI() {
   if (form) form.addEventListener("submit", handleNotificationsSave);
   if (syncBtn) {
     syncBtn.addEventListener("click", () => {
-      syncNotificationsToCloud({ force: true });
+      window.LeftoversCloud?.saveNow().then(
+        () => refreshNotificationsStatus(),
+        () => refreshNotificationsStatus()
+      );
     });
   }
+
+  window.LeftoversCloud?.onStatusChange(() => {
+    refreshNotificationsStatus();
+  });
 }
 
 window.LeftoversNotifications = {
   bindNotificationsUI,
   populateNotificationsForm,
-  queueNotificationSync,
-  syncNotificationsToCloud,
-  loadNotificationSettings,
+  getSettings,
+  applyFromCloud,
+  applyLegacyLocal,
 };

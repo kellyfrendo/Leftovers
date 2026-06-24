@@ -39,7 +39,7 @@ export default async () => {
 
     const alerts = buildAlerts(
       kitchen.leftovers || [],
-      kitchen.categories || [],
+      kitchen.settings?.categories || kitchen.categories || [],
       kitchen.notify_days_before ?? 3,
       today
     );

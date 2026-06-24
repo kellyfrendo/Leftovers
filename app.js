@@ -1,7 +1,3 @@
-const STORAGE_KEY = "leftovers-fridge";
-const SHOPPING_STORAGE_KEY = "leftovers-shopping";
-const SETTINGS_STORAGE_KEY = "leftovers-settings";
-
 const BACKUP_VERSION = 1;
 const MAX_ITEM_QUANTITY = 30;
 
@@ -97,13 +93,10 @@ const LEGACY_CATEGORY_MAP = {
 };
 
 const CATEGORY_SCHEMA_VERSION = "2";
-const CATEGORY_SCHEMA_KEY = "leftovers-category-schema";
 
 const CATEGORY_DAYS_SCHEMA_VERSION = "2";
-const CATEGORY_DAYS_SCHEMA_KEY = "leftovers-category-days-schema";
 
 const CATEGORY_BUILTIN_SCHEMA_VERSION = "1";
-const CATEGORY_BUILTIN_SCHEMA_KEY = "leftovers-category-builtin-schema";
 
 const LEGACY_CONTAINER_MAP = {
   "Square tub": "Square tub (small)",
@@ -111,17 +104,14 @@ const LEGACY_CONTAINER_MAP = {
 };
 
 const CONTAINER_SCHEMA_VERSION = "1";
-const CONTAINER_SCHEMA_KEY = "leftovers-container-schema";
 
 const LEGACY_LOCATION_MAP = {
   "Fiambre drawer": "Top drawer",
 };
 
 const LOCATION_SCHEMA_VERSION = "1";
-const LOCATION_SCHEMA_KEY = "leftovers-location-schema";
 
 const LOCATION_BUILTIN_SCHEMA_VERSION = "1";
-const LOCATION_BUILTIN_SCHEMA_KEY = "leftovers-location-builtin-schema";
 
 const PAGES = {
   home: document.getElementById("page-home"),
@@ -149,9 +139,9 @@ const SETTINGS_DETAIL_PAGES = new Set([
   "settings-backup",
 ]);
 
-let settings = loadSettings();
-let leftovers = loadLeftovers();
-let shoppingItems = loadShopping();
+let settings = createDefaultSettings();
+let leftovers = [];
+let shoppingItems = [];
 let fridgeExcludedCategories = new Set();
 let currentPage = "home";
 let returnPage = "leftovers";
@@ -199,10 +189,25 @@ const SETTINGS_LISTS = {
 
 const settingsPresetsAddForm = document.getElementById("settings-presets-add");
 const descriptionPresetsDatalist = document.getElementById("description-presets-datalist");
+const appLoadingEl = document.getElementById("app-loading");
+const appErrorEl = document.getElementById("app-error");
 
 init();
 
-function init() {
+async function init() {
+  showAppLoading(true);
+  hideAppError();
+
+  try {
+    await bootstrapFromCloud();
+  } catch (error) {
+    showAppLoading(false);
+    showAppError(error.message || "Could not load your kitchen from the cloud.");
+    return;
+  }
+
+  showAppLoading(false);
+
   dateInput.value = todayString();
   populateDropdowns();
   updateDescriptionDatalist();
@@ -250,18 +255,154 @@ function init() {
   importBackupBtn.addEventListener("click", () => importBackupFile.click());
   importBackupFile.addEventListener("change", handleImportBackup);
 
+  window.LeftoversNotifications?.bindNotificationsUI();
+  navigateTo("home");
+}
+
+function createDefaultSettings() {
+  const next = structuredClone(DEFAULT_SETTINGS);
+  next._schemaVersions = {};
+  return next;
+}
+
+function getSchemaVersions() {
+  if (!settings._schemaVersions || typeof settings._schemaVersions !== "object") {
+    settings._schemaVersions = {};
+  }
+  return settings._schemaVersions;
+}
+
+function normalizeSettings(parsed) {
+  if (!parsed || typeof parsed !== "object") return createDefaultSettings();
+
+  const next = {
+    categories: parsed.categories?.length
+      ? parsed.categories
+      : structuredClone(DEFAULT_SETTINGS.categories),
+    containers: parsed.containers?.length
+      ? parsed.containers
+      : structuredClone(DEFAULT_SETTINGS.containers),
+    locations: parsed.locations?.length
+      ? parsed.locations
+      : structuredClone(DEFAULT_SETTINGS.locations),
+    presets: Array.isArray(parsed.presets) ? parsed.presets : [],
+    _schemaVersions:
+      parsed._schemaVersions && typeof parsed._schemaVersions === "object"
+        ? parsed._schemaVersions
+        : {},
+  };
+  return next;
+}
+
+function buildCloudPayload() {
+  const notifications = window.LeftoversNotifications?.getSettings() || {
+    enabled: false,
+    email: "",
+    daysBefore: 3,
+  };
+
+  return {
+    settings,
+    leftovers,
+    shopping: shoppingItems,
+    email: notifications.email,
+    notifications_enabled: notifications.enabled,
+    notify_days_before: notifications.daysBefore,
+  };
+}
+
+function applyKitchenFromCloud(kitchen) {
+  const hasStoredSettings =
+    kitchen.settings &&
+    typeof kitchen.settings === "object" &&
+    Array.isArray(kitchen.settings.categories) &&
+    kitchen.settings.categories.length;
+
+  if (hasStoredSettings) {
+    settings = normalizeSettings(kitchen.settings);
+  } else {
+    settings = createDefaultSettings();
+    if (Array.isArray(kitchen.categories) && kitchen.categories.length) {
+      const labelById = new Map(kitchen.categories.map((cat) => [cat.id, cat.label]));
+      settings.categories = settings.categories.map((cat) => ({
+        ...cat,
+        label: labelById.get(cat.id) || cat.label,
+      }));
+    }
+  }
+
+  leftovers = Array.isArray(kitchen.leftovers) ? kitchen.leftovers : [];
+  shoppingItems = Array.isArray(kitchen.shopping) ? kitchen.shopping : [];
+  window.LeftoversNotifications?.applyFromCloud({
+    enabled: kitchen.notifications_enabled,
+    email: kitchen.email,
+    daysBefore: kitchen.notify_days_before,
+  });
+}
+
+function applyLegacyLocalData(legacy) {
+  if (legacy.settings) {
+    settings = normalizeSettings(legacy.settings);
+  }
+  if (Array.isArray(legacy.leftovers)) leftovers = legacy.leftovers;
+  if (Array.isArray(legacy.shopping)) shoppingItems = legacy.shopping;
+  window.LeftoversNotifications?.applyLegacyLocal(legacy.notifications);
+}
+
+async function bootstrapFromCloud() {
+  if (!window.LeftoversCloud?.isAvailable()) {
+    throw new Error("Open the Netlify-deployed app to use Leftovers.");
+  }
+
+  window.LeftoversCloud.registerStateProvider(buildCloudPayload);
+
+  const { kitchen, legacy } = await window.LeftoversCloud.loadKitchen();
+
+  if (kitchen) {
+    applyKitchenFromCloud(kitchen);
+  } else if (legacy) {
+    applyLegacyLocalData(legacy);
+  }
+
+  runDataMigrations();
+
+  const needsInitialSave = !kitchen || !kitchen.settings?.categories?.length;
+  if (needsInitialSave) {
+    await window.LeftoversCloud.saveNow();
+  }
+
+  window.LeftoversCloud.clearLegacyLocalData();
+}
+
+function runDataMigrations() {
   migrateCategorySchema();
   migrateDefaultCategoryDays();
   migrateBuiltinCategories();
   migrateContainerSchema();
   migrateLocationSchema();
   migrateBuiltinLocations();
-  window.LeftoversNotifications?.bindNotificationsUI();
-  navigateTo("home");
+}
+
+function showAppLoading(show) {
+  if (!appLoadingEl) return;
+  appLoadingEl.classList.toggle("hidden", !show);
+  document.querySelector(".app")?.classList.toggle("app--loading", show);
+}
+
+function showAppError(message) {
+  if (!appErrorEl) return;
+  appErrorEl.textContent = message;
+  appErrorEl.classList.remove("hidden");
+  document.querySelector(".app")?.classList.add("app--loading");
+}
+
+function hideAppError() {
+  appErrorEl?.classList.add("hidden");
 }
 
 function migrateLocationSchema() {
-  if (localStorage.getItem(LOCATION_SCHEMA_KEY) === LOCATION_SCHEMA_VERSION) return;
+  const schemaVersions = getSchemaVersions();
+  if (schemaVersions.location === LOCATION_SCHEMA_VERSION) return;
 
   settings.locations = structuredClone(DEFAULT_SETTINGS.locations);
 
@@ -277,11 +418,12 @@ function migrateLocationSchema() {
 
   saveSettings();
   saveLeftovers();
-  localStorage.setItem(LOCATION_SCHEMA_KEY, LOCATION_SCHEMA_VERSION);
+  schemaVersions.location = LOCATION_SCHEMA_VERSION;
 }
 
 function migrateBuiltinLocations() {
-  if (localStorage.getItem(LOCATION_BUILTIN_SCHEMA_KEY) === LOCATION_BUILTIN_SCHEMA_VERSION) return;
+  const schemaVersions = getSchemaVersions();
+  if (schemaVersions.locationBuiltin === LOCATION_BUILTIN_SCHEMA_VERSION) return;
 
   DEFAULT_SETTINGS.locations.forEach((defaultLoc) => {
     const hasId = settings.locations.some((loc) => loc.id === defaultLoc.id);
@@ -294,11 +436,12 @@ function migrateBuiltinLocations() {
   });
 
   saveSettings();
-  localStorage.setItem(LOCATION_BUILTIN_SCHEMA_KEY, LOCATION_BUILTIN_SCHEMA_VERSION);
+  schemaVersions.locationBuiltin = LOCATION_BUILTIN_SCHEMA_VERSION;
 }
 
 function migrateContainerSchema() {
-  if (localStorage.getItem(CONTAINER_SCHEMA_KEY) === CONTAINER_SCHEMA_VERSION) return;
+  const schemaVersions = getSchemaVersions();
+  if (schemaVersions.container === CONTAINER_SCHEMA_VERSION) return;
 
   settings.containers = structuredClone(DEFAULT_SETTINGS.containers);
 
@@ -309,11 +452,12 @@ function migrateContainerSchema() {
 
   saveSettings();
   saveLeftovers();
-  localStorage.setItem(CONTAINER_SCHEMA_KEY, CONTAINER_SCHEMA_VERSION);
+  schemaVersions.container = CONTAINER_SCHEMA_VERSION;
 }
 
 function migrateCategorySchema() {
-  if (localStorage.getItem(CATEGORY_SCHEMA_KEY) === CATEGORY_SCHEMA_VERSION) return;
+  const schemaVersions = getSchemaVersions();
+  if (schemaVersions.category === CATEGORY_SCHEMA_VERSION) return;
 
   settings.categories = structuredClone(DEFAULT_SETTINGS.categories);
 
@@ -329,11 +473,12 @@ function migrateCategorySchema() {
 
   saveSettings();
   saveLeftovers();
-  localStorage.setItem(CATEGORY_SCHEMA_KEY, CATEGORY_SCHEMA_VERSION);
+  schemaVersions.category = CATEGORY_SCHEMA_VERSION;
 }
 
 function migrateDefaultCategoryDays() {
-  if (localStorage.getItem(CATEGORY_DAYS_SCHEMA_KEY) === CATEGORY_DAYS_SCHEMA_VERSION) return;
+  const schemaVersions = getSchemaVersions();
+  if (schemaVersions.categoryDays === CATEGORY_DAYS_SCHEMA_VERSION) return;
 
   const defaultDays = new Map(DEFAULT_SETTINGS.categories.map((cat) => [cat.id, cat.days]));
   settings.categories.forEach((cat) => {
@@ -341,11 +486,12 @@ function migrateDefaultCategoryDays() {
   });
 
   saveSettings();
-  localStorage.setItem(CATEGORY_DAYS_SCHEMA_KEY, CATEGORY_DAYS_SCHEMA_VERSION);
+  schemaVersions.categoryDays = CATEGORY_DAYS_SCHEMA_VERSION;
 }
 
 function migrateBuiltinCategories() {
-  if (localStorage.getItem(CATEGORY_BUILTIN_SCHEMA_KEY) === CATEGORY_BUILTIN_SCHEMA_VERSION) return;
+  const schemaVersions = getSchemaVersions();
+  if (schemaVersions.categoryBuiltin === CATEGORY_BUILTIN_SCHEMA_VERSION) return;
 
   DEFAULT_SETTINGS.categories.forEach((defaultCat) => {
     if (settings.categories.some((cat) => cat.id === defaultCat.id)) return;
@@ -359,7 +505,7 @@ function migrateBuiltinCategories() {
   });
 
   saveSettings();
-  localStorage.setItem(CATEGORY_BUILTIN_SCHEMA_KEY, CATEGORY_BUILTIN_SCHEMA_VERSION);
+  schemaVersions.categoryBuiltin = CATEGORY_BUILTIN_SCHEMA_VERSION;
 }
 
 function openAddItemFromLeftovers() {
@@ -369,33 +515,16 @@ function openAddItemFromLeftovers() {
 }
 
 function loadSettings() {
-  try {
-    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return structuredClone(DEFAULT_SETTINGS);
-    const parsed = JSON.parse(raw);
-    const categories = parsed.categories?.length
-      ? parsed.categories
-      : structuredClone(DEFAULT_SETTINGS.categories);
-    const result = {
-      categories,
-      containers: parsed.containers?.length ? parsed.containers : structuredClone(DEFAULT_SETTINGS.containers),
-      locations: parsed.locations?.length ? parsed.locations : structuredClone(DEFAULT_SETTINGS.locations),
-      presets: Array.isArray(parsed.presets) ? parsed.presets : [],
-    };
-    return result;
-  } catch {
-    return structuredClone(DEFAULT_SETTINGS);
-  }
+  return normalizeSettings(settings);
 }
 
 function saveSettings() {
-  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   populateDropdowns();
   updateDescriptionDatalist();
   if (currentPage === "fridge" && leftovers.length > 0) {
     renderFridgeCategoryFilters();
   }
-  window.LeftoversNotifications?.queueNotificationSync();
+  window.LeftoversCloud?.queueSave();
 }
 
 function getOrderedCategories() {
@@ -603,30 +732,19 @@ function navigateTo(page) {
 }
 
 function loadLeftovers() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  return leftovers;
 }
 
 function saveLeftovers() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(leftovers));
-  window.LeftoversNotifications?.queueNotificationSync();
+  window.LeftoversCloud?.queueSave();
 }
 
 function loadShopping() {
-  try {
-    const raw = localStorage.getItem(SHOPPING_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  return shoppingItems;
 }
 
 function saveShopping() {
-  localStorage.setItem(SHOPPING_STORAGE_KEY, JSON.stringify(shoppingItems));
+  window.LeftoversCloud?.queueSave();
 }
 
 function buildBackupPayload() {
@@ -670,7 +788,7 @@ function validateBackup(data) {
 }
 
 function applyBackup(data) {
-  settings = data.settings;
+  settings = normalizeSettings(data.settings);
   leftovers = data.leftovers;
   shoppingItems = data.shopping;
   fridgeExcludedCategories.clear();
@@ -684,6 +802,7 @@ function applyBackup(data) {
   if (currentPage === "fridge") renderFridgeOverview();
   if (currentPage === "shopping") renderShopping();
   if (SETTINGS_DETAIL_PAGES.has(currentPage)) renderSettingsPage(currentPage);
+  window.LeftoversCloud?.saveNow().catch(() => {});
 }
 
 function handleImportBackup(event) {
@@ -1717,4 +1836,6 @@ function escapeHtml(text) {
 window.LeftoversApp = {
   getLeftovers: () => leftovers,
   getCategories: () => getOrderedCategories().map((cat) => ({ id: cat.id, label: cat.label })),
+  getSettings: () => settings,
+  getShopping: () => shoppingItems,
 };

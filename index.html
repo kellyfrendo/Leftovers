@@ -17,7 +17,11 @@
     />
   </head>
   <body>
-    <div class="app">
+    <div id="app-loading" class="app-loading">
+      <p class="app-loading__text">Loading your kitchen…</p>
+    </div>
+    <p id="app-error" class="app-error hidden" role="alert"></p>
+    <div class="app app--loading">
       <section id="page-home" class="page">
         <header class="home-header">
           <span class="home-header__icon" aria-hidden="true">
@@ -390,7 +394,7 @@
           <div class="page-header__title">
             <h1>Notifications</h1>
             <p class="page-header__subtitle">
-              Sync your fridge to the cloud and get a daily email when items are due soon or overdue.
+              Choose when to get a daily email about items that are due soon or overdue.
             </p>
           </div>
         </header>
@@ -433,7 +437,7 @@
 
             <div class="settings-backup__actions">
               <button type="submit" class="btn btn--primary">Save</button>
-              <button type="button" id="notifications-sync-now" class="btn btn--ghost">Sync now</button>
+              <button type="button" id="notifications-sync-now" class="btn btn--ghost">Save now</button>
             </div>
           </form>
 
@@ -450,7 +454,7 @@
           <div class="page-header__title">
             <h1>Backup</h1>
             <p class="page-header__subtitle">
-              Export your fridge items, shopping list, and settings to a file. Import a backup to restore on this or another device.
+              Export your fridge items, shopping list, and settings to a file. Import a backup to restore your cloud kitchen.
             </p>
           </div>
         </header>
@@ -473,7 +477,8 @@
       </section>
     </div>
 
-    <script src="notifications.js?v=1"></script>
-    <script src="app.js?v=6"></script>
+    <script src="cloud-storage.js?v=1"></script>
+    <script src="notifications.js?v=2"></script>
+    <script src="app.js?v=7"></script>
   </body>
 </html>
