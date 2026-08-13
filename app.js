@@ -15,6 +15,8 @@ const DEFAULT_SETTINGS = {
     { id: "cooked-stuff", label: "Cooked stuff", days: 7 },
     { id: "drinks", label: "Drinks", days: 60 },
     { id: "frozen-item", label: "Frozen item", days: 90 },
+    { id: "canned-goods", label: "Canned goods", days: 90 },
+    { id: "dried-goods", label: "Dried goods", days: 90 },
     { id: "other", label: "Other", days: 7 },
   ],
   containers: [
@@ -37,10 +39,18 @@ const DEFAULT_SETTINGS = {
     { id: "left-drawer", label: "Left drawer" },
     { id: "right-drawer", label: "Right drawer" },
     { id: "door", label: "Door" },
+    { id: "cupboard", label: "Cupboard" },
     { id: "freezer", label: "Freezer" },
   ],
   presets: [],
+  accessibilityTextSize: "default",
 };
+
+const TEXT_SIZE_OPTIONS = [
+  { id: "default", label: "Default", hint: "Standard size" },
+  { id: "large", label: "Large", hint: "Easier to read (+15%)" },
+  { id: "extra-large", label: "Extra large", hint: "Maximum size (+30%)" },
+];
 
 const LEFTOVERS_PAGE_CATEGORY_IDS = new Set(["cooked-stuff"]);
 
@@ -54,6 +64,8 @@ const CATEGORY_ICONS = {
   "cooked-stuff": "🍲",
   drinks: "🥤",
   "frozen-item": "❄️",
+  "canned-goods": "🥫",
+  "dried-goods": "🧺",
   other: "📦",
 };
 
@@ -86,6 +98,14 @@ const CATEGORY_ADD_DEFAULTS = {
     container: "Original packaging",
     location: "Right drawer",
   },
+  "canned-goods": {
+    container: "Original packaging",
+    location: "Cupboard",
+  },
+  "dried-goods": {
+    container: "Original packaging",
+    location: "Cupboard",
+  },
 };
 
 const LEGACY_CATEGORY_MAP = {
@@ -99,7 +119,7 @@ const CATEGORY_SCHEMA_VERSION = "2";
 
 const CATEGORY_DAYS_SCHEMA_VERSION = "2";
 
-const CATEGORY_BUILTIN_SCHEMA_VERSION = "1";
+const CATEGORY_BUILTIN_SCHEMA_VERSION = "2";
 
 const LEGACY_CONTAINER_MAP = {
   "Square tub": "Square tub (small)",
@@ -114,7 +134,7 @@ const LEGACY_LOCATION_MAP = {
 
 const LOCATION_SCHEMA_VERSION = "1";
 
-const LOCATION_BUILTIN_SCHEMA_VERSION = "1";
+const LOCATION_BUILTIN_SCHEMA_VERSION = "2";
 
 const BATCH_DEFAULT_ROW_COUNT = 3;
 
@@ -133,6 +153,7 @@ const PAGES = {
   "settings-presets": document.getElementById("page-settings-presets"),
   "settings-inventory": document.getElementById("page-settings-inventory"),
   "settings-notifications": document.getElementById("page-settings-notifications"),
+  "settings-accessibility": document.getElementById("page-settings-accessibility"),
   "settings-kitchen": document.getElementById("page-settings-kitchen"),
   "settings-backup": document.getElementById("page-settings-backup"),
 };
@@ -144,6 +165,7 @@ const SETTINGS_DETAIL_PAGES = new Set([
   "settings-presets",
   "settings-inventory",
   "settings-notifications",
+  "settings-accessibility",
   "settings-kitchen",
   "settings-backup",
 ]);
@@ -235,6 +257,7 @@ async function init() {
 
   showAppLoading(false);
 
+  applyAccessibilityTextSize();
   dateInput.value = todayString();
   populateDropdowns();
   updateDescriptionDatalist();
@@ -290,9 +313,39 @@ async function init() {
   importBackupBtn.addEventListener("click", () => importBackupFile.click());
   importBackupFile.addEventListener("change", handleImportBackup);
 
+  document.querySelectorAll('input[name="accessibility-text-size"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (input.checked) setAccessibilityTextSize(input.value);
+    });
+  });
+
   window.LeftoversNotifications?.bindNotificationsUI();
   window.LeftoversKitchenLink?.bindKitchenLinkUI();
   navigateTo("home");
+}
+
+function normalizeAccessibilityTextSize(value) {
+  return TEXT_SIZE_OPTIONS.some((option) => option.id === value) ? value : "default";
+}
+
+function getAccessibilityTextSize() {
+  return normalizeAccessibilityTextSize(settings.accessibilityTextSize);
+}
+
+function applyAccessibilityTextSize() {
+  document.documentElement.dataset.textSize = getAccessibilityTextSize();
+}
+
+function setAccessibilityTextSize(value) {
+  settings.accessibilityTextSize = normalizeAccessibilityTextSize(value);
+  saveSettings();
+}
+
+function populateAccessibilityForm() {
+  const current = getAccessibilityTextSize();
+  document.querySelectorAll('input[name="accessibility-text-size"]').forEach((input) => {
+    input.checked = input.value === current;
+  });
 }
 
 function createDefaultSettings() {
@@ -322,6 +375,7 @@ function normalizeSettings(parsed) {
       ? parsed.locations
       : structuredClone(DEFAULT_SETTINGS.locations),
     presets: Array.isArray(parsed.presets) ? parsed.presets : [],
+    accessibilityTextSize: normalizeAccessibilityTextSize(parsed.accessibilityTextSize),
     _schemaVersions:
       parsed._schemaVersions && typeof parsed._schemaVersions === "object"
         ? parsed._schemaVersions
@@ -575,6 +629,7 @@ function loadSettings() {
 }
 
 function saveSettings() {
+  applyAccessibilityTextSize();
   populateDropdowns();
   updateDescriptionDatalist();
   if (currentPage === "fridge" && leftovers.length > 0) {
@@ -1035,6 +1090,40 @@ function getPresetsWithPhotos() {
   return settings.presets.filter((preset) => preset.photo);
 }
 
+function groupPresetsWithPhotosByCategory() {
+  const presets = getPresetsWithPhotos();
+  const sections = [];
+  const knownCategoryIds = new Set(getOrderedCategories().map((category) => category.id));
+
+  getOrderedCategories().forEach((category) => {
+    const items = presets.filter((preset) => preset.categoryId === category.id);
+    if (items.length) sections.push({ categoryId: category.id, items });
+  });
+
+  [...new Set(presets.map((preset) => preset.categoryId).filter((id) => !knownCategoryIds.has(id)))].forEach(
+    (categoryId) => {
+      sections.push({
+        categoryId,
+        items: presets.filter((preset) => preset.categoryId === categoryId),
+      });
+    }
+  );
+
+  return sections;
+}
+
+function renderPhotoAddTile(preset) {
+  return `
+    <button type="button" class="photo-add-tile" data-preset-id="${escapeHtml(preset.id)}">
+      <span class="photo-add-tile__image-wrap">
+        <img src="${preset.photo}" alt="" class="photo-add-tile__image" />
+      </span>
+      <span class="photo-add-tile__label">${escapeHtml(preset.description)}</span>
+      <span class="photo-add-tile__meta">${escapeHtml(preset.location)}</span>
+    </button>
+  `;
+}
+
 function getContainerForCategory(categoryId) {
   const defaults = CATEGORY_ADD_DEFAULTS[categoryId];
   if (defaults?.container && settings.containers.some((item) => item.label === defaults.container)) {
@@ -1059,9 +1148,9 @@ function setPhotoAddStatus(message) {
 }
 
 function renderPhotoAddPage() {
-  const presets = getPresetsWithPhotos();
+  const sections = groupPresetsWithPhotosByCategory();
 
-  if (!presets.length) {
+  if (!sections.length) {
     photoAddGrid.innerHTML = "";
     photoAddEmpty?.classList.remove("hidden");
     setPhotoAddStatus("");
@@ -1069,18 +1158,22 @@ function renderPhotoAddPage() {
   }
 
   photoAddEmpty?.classList.add("hidden");
-  photoAddGrid.innerHTML = presets
-    .map(
-      (preset) => `
-        <button type="button" class="photo-add-tile" data-preset-id="${escapeHtml(preset.id)}">
-          <span class="photo-add-tile__image-wrap">
-            <img src="${preset.photo}" alt="" class="photo-add-tile__image" />
-          </span>
-          <span class="photo-add-tile__label">${escapeHtml(preset.description)}</span>
-          <span class="photo-add-tile__meta">${escapeHtml(getCategoryLabel(preset.categoryId))} · ${escapeHtml(preset.location)}</span>
-        </button>
-      `
-    )
+  photoAddGrid.innerHTML = sections
+    .map(({ categoryId, items }) => {
+      const label = getCategoryLabel(categoryId);
+      const icon = getCategoryIcon(categoryId);
+      return `
+        <section class="photo-add-group" aria-labelledby="photo-add-group-${escapeHtml(categoryId)}">
+          <h3 id="photo-add-group-${escapeHtml(categoryId)}" class="photo-add-group__heading">
+            <span class="photo-add-group__icon" aria-hidden="true">${icon}</span>
+            ${escapeHtml(label)}
+          </h3>
+          <div class="photo-add-grid">
+            ${items.map((preset) => renderPhotoAddTile(preset)).join("")}
+          </div>
+        </section>
+      `;
+    })
     .join("");
 
   photoAddGrid.querySelectorAll(".photo-add-tile").forEach((button) => {
@@ -1920,6 +2013,7 @@ function renderSettingsPage(page) {
   }
   if (page === "settings-inventory") renderInventory();
   if (page === "settings-notifications") window.LeftoversNotifications?.populateNotificationsForm();
+  if (page === "settings-accessibility") populateAccessibilityForm();
   if (page === "settings-kitchen") window.LeftoversKitchenLink?.populateKitchenLinkForm();
 }
 

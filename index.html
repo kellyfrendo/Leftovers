@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#2b6cb0" />
     <title>Leftovers — Fridge Tracker</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="styles.css?v=7" />
+    <link rel="stylesheet" href="styles.css?v=9" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -35,7 +35,7 @@
             </svg>
           </span>
           <h1>Hungry?</h1>
-          <p class="home-header__tagline">Kitchen Companion v 3.0 (database)</p>
+          <p class="home-header__tagline">Kitchen Companion v 4.0 (batch add)</p>
         </header>
 
         <nav class="home-nav" aria-label="Main menu">
@@ -122,7 +122,7 @@
             <button type="button" class="btn btn--primary" data-page="settings-presets">Food shortcuts</button>
           </div>
 
-          <div id="photo-add-grid" class="photo-add-grid" aria-live="polite"></div>
+          <div id="photo-add-grid" class="photo-add-groups" aria-live="polite"></div>
         </section>
       </section>
 
@@ -364,6 +364,11 @@
             <span class="home-nav__label">Notifications</span>
             <span class="home-nav__desc">Daily email when items are close to eat-by.</span>
           </button>
+          <button type="button" class="home-nav__btn" data-page="settings-accessibility">
+            <span class="home-nav__icon" aria-hidden="true">🔠</span>
+            <span class="home-nav__label">Accessibility</span>
+            <span class="home-nav__desc">Increase text, buttons, and icon sizes.</span>
+          </button>
           <button type="button" class="home-nav__btn home-nav__btn--settings" data-page="settings-backup">
             <span class="home-nav__icon" aria-hidden="true">💾</span>
             <span class="home-nav__label">Backup</span>
@@ -591,6 +596,49 @@
         </section>
       </section>
 
+      <section id="page-settings-accessibility" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="settings">← Settings</button>
+          <div class="page-header__title">
+            <h1>Accessibility</h1>
+            <p class="page-header__subtitle">Make text, buttons, and icons easier to see and tap.</p>
+          </div>
+        </header>
+
+        <section class="panel settings-section" aria-labelledby="settings-accessibility-heading">
+          <h2 id="settings-accessibility-heading" class="visually-hidden">Text and button size</h2>
+          <fieldset class="accessibility-size-fieldset">
+            <legend class="field__label">Text, button, and icon size</legend>
+            <div class="accessibility-size-options">
+              <label class="accessibility-size-option">
+                <input type="radio" name="accessibility-text-size" value="default" checked />
+                <span class="accessibility-size-option__content">
+                  <span class="accessibility-size-option__label">Default</span>
+                  <span class="accessibility-size-option__hint">Standard size</span>
+                </span>
+              </label>
+              <label class="accessibility-size-option">
+                <input type="radio" name="accessibility-text-size" value="large" />
+                <span class="accessibility-size-option__content">
+                  <span class="accessibility-size-option__label">Large</span>
+                  <span class="accessibility-size-option__hint">Easier to read (+15%)</span>
+                </span>
+              </label>
+              <label class="accessibility-size-option">
+                <input type="radio" name="accessibility-text-size" value="extra-large" />
+                <span class="accessibility-size-option__content">
+                  <span class="accessibility-size-option__label">Extra large</span>
+                  <span class="accessibility-size-option__hint">Maximum size (+30%)</span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+          <p class="settings-section__hint">
+            Your choice is saved to this kitchen and syncs across your devices.
+          </p>
+        </section>
+      </section>
+
       <section id="page-settings-backup" class="page hidden">
         <header class="page-header">
           <button type="button" class="btn btn--back" data-page="settings">← Settings</button>
@@ -623,6 +671,6 @@
     <script src="cloud-storage.js?v=4"></script>
     <script src="kitchen-link.js?v=2"></script>
     <script src="notifications.js?v=3"></script>
-    <script src="app.js?v=12"></script>
+    <script src="app.js?v=16"></script>
   </body>
 </html>
