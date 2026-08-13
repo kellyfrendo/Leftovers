@@ -1,0 +1,11 @@
+---
+description: Leftovers live deployment URL and testing notes
+alwaysApply: true
+---
+
+# Leftovers deployment
+
+- **Live app URL:** https://frendofamily.netlify.app
+- **GitHub repo:** https://github.com/kellyfrendo/Leftovers
+- When referring to the deployed/production app, testing on iPad, or Netlify deploys, use **frendofamily.netlify.app** — not leftovers.netlify.app or other guessed URLs.
+- Local development: `python3 -m http.server 8080` at http://localhost:8080 (cloud sync requires Netlify or `netlify dev`).

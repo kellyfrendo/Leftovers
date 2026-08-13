@@ -1235,10 +1235,18 @@ function isFreezerLocation(label) {
   return label.toLowerCase() === "freezer";
 }
 
+function isCupboardLocation(label) {
+  if (!label) return false;
+  const setting = settings.locations.find((item) => item.label === label);
+  if (setting?.id === "cupboard") return true;
+  return label.toLowerCase() === "cupboard";
+}
+
 function sortLocationsWithFreezerLast(locations) {
-  const freezer = locations.filter(isFreezerLocation);
-  const rest = locations.filter((loc) => !isFreezerLocation(loc));
-  return [...rest, ...freezer];
+  const cupboard = locations.filter(isCupboardLocation);
+  const freezer = locations.filter((loc) => isFreezerLocation(loc) && !isCupboardLocation(loc));
+  const rest = locations.filter((loc) => !isFreezerLocation(loc) && !isCupboardLocation(loc));
+  return [...rest, ...freezer, ...cupboard];
 }
 
 function getOrderedLocationLabels() {

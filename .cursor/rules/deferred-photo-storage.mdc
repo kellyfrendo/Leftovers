@@ -1,0 +1,14 @@
+---
+description: Remind about deferred Supabase Storage photo upgrade when photos/limits come up
+alwaysApply: true
+---
+
+# Deferred — product photo file storage
+
+The user planned but deferred upgrading product photos from embedded base64 in `settings.presets` to **Supabase Storage + URLs**.
+
+**Full plan:** `docs/photo-storage-upgrade.md`
+
+When the user asks about photo limits, slow sync, many shortcuts, or improving Add by Photo storage, briefly remind them this upgrade is planned and offer to implement it — unless they say not to.
+
+Do not start implementation unless they explicitly ask.
