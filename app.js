@@ -1,5 +1,8 @@
 const BACKUP_VERSION = 1;
 const MAX_ITEM_QUANTITY = 30;
+const PRESET_PHOTO_MAX_PX = 400;
+const PRESET_PHOTO_JPEG_QUALITY = 0.82;
+const PRESET_PHOTO_MAX_BYTES = 180000;
 
 const DEFAULT_SETTINGS = {
   categories: [
@@ -113,10 +116,14 @@ const LOCATION_SCHEMA_VERSION = "1";
 
 const LOCATION_BUILTIN_SCHEMA_VERSION = "1";
 
+const BATCH_DEFAULT_ROW_COUNT = 3;
+
 const PAGES = {
   home: document.getElementById("page-home"),
   leftovers: document.getElementById("page-leftovers"),
   add: document.getElementById("page-add"),
+  "add-batch": document.getElementById("page-add-batch"),
+  "add-photo": document.getElementById("page-add-photo"),
   fridge: document.getElementById("page-fridge"),
   shopping: document.getElementById("page-shopping"),
   settings: document.getElementById("page-settings"),
@@ -149,9 +156,20 @@ let currentPage = "home";
 let returnPage = "leftovers";
 let addFormDefaults = null;
 let settingsEdit = { type: null, id: null };
+let batchRowCounter = 0;
+let pendingPresetAddPhoto = null;
+let presetEditPhoto = undefined;
 
 const form = document.getElementById("add-form");
 const addBackBtn = document.getElementById("add-back");
+const batchAddForm = document.getElementById("batch-add-form");
+const batchAddBackBtn = document.getElementById("batch-add-back");
+const batchDateInput = document.getElementById("batch-date");
+const batchAddRows = document.getElementById("batch-add-rows");
+const batchAddRowBtn = document.getElementById("batch-add-row");
+const batchAddFromShoppingBtn = document.getElementById("batch-add-from-shopping");
+const batchAddSubmitBtn = document.getElementById("batch-add-submit");
+const batchAddStatus = document.getElementById("batch-add-status");
 const dateInput = document.getElementById("date");
 const categoryInput = document.getElementById("category");
 const descriptionInput = document.getElementById("description");
@@ -190,6 +208,13 @@ const SETTINGS_LISTS = {
 };
 
 const settingsPresetsAddForm = document.getElementById("settings-presets-add");
+const presetAddPhotoInput = document.getElementById("preset-add-photo-input");
+const presetAddPhotoBtn = document.getElementById("preset-add-photo-btn");
+const presetAddPhotoRemoveBtn = document.getElementById("preset-add-photo-remove");
+const presetAddPhotoPreview = document.getElementById("preset-add-photo-preview");
+const photoAddGrid = document.getElementById("photo-add-grid");
+const photoAddEmpty = document.getElementById("photo-add-empty");
+const photoAddStatus = document.getElementById("photo-add-status");
 const descriptionPresetsDatalist = document.getElementById("description-presets-datalist");
 const appLoadingEl = document.getElementById("app-loading");
 const appErrorEl = document.getElementById("app-error");
@@ -217,7 +242,7 @@ async function init() {
 
   document.querySelectorAll("[data-page]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (btn.dataset.page === "add" && btn.dataset.return) {
+      if ((btn.dataset.page === "add" || btn.dataset.page === "add-batch") && btn.dataset.return) {
         returnPage = btn.dataset.return;
       }
       navigateTo(btn.dataset.page);
@@ -225,10 +250,15 @@ async function init() {
   });
 
   addBackBtn.addEventListener("click", () => navigateTo(returnPage));
+  batchAddBackBtn.addEventListener("click", () => navigateTo(returnPage));
 
   leftoversAddItemBtn.addEventListener("click", openAddItemFromLeftovers);
 
   form.addEventListener("submit", handleSubmit);
+  batchAddForm.addEventListener("submit", handleBatchSubmit);
+  batchAddRowBtn.addEventListener("click", () => appendBatchRow());
+  batchAddFromShoppingBtn.addEventListener("click", fillBatchRowsFromShoppingList);
+  batchDateInput.addEventListener("change", updateBatchAddStatus);
   dateInput.addEventListener("change", updateEatByPreview);
   categoryInput.addEventListener("change", handleCategoryChange);
   descriptionInput.addEventListener("input", () => applyPresetForDescription(descriptionInput.value));
@@ -252,6 +282,9 @@ async function init() {
   });
 
   settingsPresetsAddForm.addEventListener("submit", handlePresetAdd);
+  presetAddPhotoBtn.addEventListener("click", () => presetAddPhotoInput.click());
+  presetAddPhotoInput.addEventListener("change", handlePresetAddPhotoSelected);
+  presetAddPhotoRemoveBtn.addEventListener("click", clearPendingPresetAddPhoto);
 
   exportBackupBtn.addEventListener("click", exportBackup);
   importBackupBtn.addEventListener("click", () => importBackupFile.click());
@@ -563,6 +596,22 @@ function categoryOptionsHtml(selectedId) {
     .join("");
 }
 
+function containerOptionsHtml(selectedLabel) {
+  return settings.containers
+    .map(
+      (item) =>
+        `<option value="${escapeHtml(item.label)}"${item.label === selectedLabel ? " selected" : ""}>${escapeHtml(item.label)}</option>`
+    )
+    .join("");
+}
+
+function quantityOptionsHtml(selectedValue) {
+  return Array.from({ length: MAX_ITEM_QUANTITY }, (_, index) => {
+    const value = String(index + 1);
+    return `<option value="${value}"${value === selectedValue ? " selected" : ""}>${value}</option>`;
+  }).join("");
+}
+
 function locationOptionsHtml(selectedLabel) {
   return settings.locations
     .map(
@@ -604,6 +653,261 @@ function applyCategoryDefaults(categoryId) {
   }
 }
 
+function applyCategoryDefaultsToRow(row, categoryId) {
+  const defaults = CATEGORY_ADD_DEFAULTS[categoryId];
+  if (!defaults) return;
+
+  const containerSelect = row.querySelector(".batch-row__container");
+  const locationSelect = row.querySelector(".batch-row__location");
+
+  if (
+    defaults.container &&
+    containerSelect &&
+    settings.containers.some((item) => item.label === defaults.container)
+  ) {
+    containerSelect.value = defaults.container;
+  }
+  if (
+    defaults.location &&
+    locationSelect &&
+    settings.locations.some((item) => item.label === defaults.location)
+  ) {
+    locationSelect.value = defaults.location;
+  }
+}
+
+function applyPresetToBatchRow(row) {
+  const descriptionInputEl = row.querySelector(".batch-row__description");
+  const categorySelect = row.querySelector(".batch-row__category");
+  const locationSelect = row.querySelector(".batch-row__location");
+  const preset = findPresetByDescription(descriptionInputEl.value);
+  if (!preset) return;
+
+  if (settings.categories.some((cat) => cat.id === preset.categoryId)) {
+    categorySelect.value = preset.categoryId;
+  }
+  applyCategoryDefaultsToRow(row, categorySelect.value);
+  if (settings.locations.some((loc) => loc.label === preset.location)) {
+    locationSelect.value = preset.location;
+  }
+}
+
+function getDefaultBatchRowValues() {
+  const defaultCategory = settings.categories[0]?.id || "";
+  const categoryDefaults = CATEGORY_ADD_DEFAULTS[defaultCategory] || {};
+  const defaultContainer =
+    categoryDefaults.container && settings.containers.some((item) => item.label === categoryDefaults.container)
+      ? categoryDefaults.container
+      : settings.containers[0]?.label || "";
+  const defaultLocation =
+    categoryDefaults.location && settings.locations.some((item) => item.label === categoryDefaults.location)
+      ? categoryDefaults.location
+      : settings.locations[0]?.label || "";
+
+  return {
+    categoryId: defaultCategory,
+    container: defaultContainer,
+    location: defaultLocation,
+  };
+}
+
+function createBatchRowElement(values = {}) {
+  const defaults = getDefaultBatchRowValues();
+  const rowId = ++batchRowCounter;
+  const row = document.createElement("div");
+  row.className = "batch-row";
+  row.dataset.rowId = String(rowId);
+
+  const categoryId = values.categoryId || defaults.categoryId;
+  const container = values.container || defaults.container;
+  const location = values.location || defaults.location;
+  const quantity = values.quantity ? String(values.quantity) : "1";
+  const description = values.description || "";
+
+  row.innerHTML = `
+    <div class="batch-row__header">
+      <span class="batch-row__number">Item ${rowId}</span>
+      <button type="button" class="btn btn--ghost btn--small batch-row__remove" aria-label="Remove item">
+        Remove
+      </button>
+    </div>
+    <label class="field">
+      <span class="field__label">Description</span>
+      <input
+        type="text"
+        class="batch-row__description"
+        list="description-presets-datalist"
+        placeholder="e.g. Milk, eggs, chicken"
+        maxlength="120"
+        value="${escapeHtml(description)}"
+      />
+    </label>
+    <div class="form__row">
+      <label class="field">
+        <span class="field__label">Category</span>
+        <select class="batch-row__category">${categoryOptionsHtml(categoryId)}</select>
+      </label>
+      <label class="field field--narrow">
+        <span class="field__label">Qty</span>
+        <select class="batch-row__quantity">${quantityOptionsHtml(quantity)}</select>
+      </label>
+    </div>
+    <div class="form__row">
+      <label class="field">
+        <span class="field__label">Container</span>
+        <select class="batch-row__container">${containerOptionsHtml(container)}</select>
+      </label>
+      <label class="field">
+        <span class="field__label">Location</span>
+        <select class="batch-row__location">${locationOptionsHtml(location)}</select>
+      </label>
+    </div>
+  `;
+
+  applyCategoryDefaultsToRow(row, categoryId);
+
+  const descriptionInputEl = row.querySelector(".batch-row__description");
+  const categorySelect = row.querySelector(".batch-row__category");
+  const removeBtn = row.querySelector(".batch-row__remove");
+
+  descriptionInputEl.addEventListener("input", () => {
+    applyPresetToBatchRow(row);
+    updateBatchAddStatus();
+  });
+  descriptionInputEl.addEventListener("change", () => {
+    applyPresetToBatchRow(row);
+    updateBatchAddStatus();
+  });
+  categorySelect.addEventListener("change", () => {
+    applyCategoryDefaultsToRow(row, categorySelect.value);
+  });
+  removeBtn.addEventListener("click", () => removeBatchRow(row));
+  row.querySelectorAll("input, select").forEach((input) => {
+    input.addEventListener("input", updateBatchAddStatus);
+    input.addEventListener("change", updateBatchAddStatus);
+  });
+
+  return row;
+}
+
+function appendBatchRow(values = {}, options = {}) {
+  const { focus = true } = options;
+  const row = createBatchRowElement(values);
+  batchAddRows.appendChild(row);
+  updateBatchRowNumbers();
+  updateBatchAddStatus();
+  if (focus && !values.description) {
+    row.querySelector(".batch-row__description").focus();
+  }
+  return row;
+}
+
+function removeBatchRow(row) {
+  if (batchAddRows.children.length <= 1) {
+    clearBatchRow(row);
+    updateBatchAddStatus();
+    return;
+  }
+
+  row.remove();
+  updateBatchRowNumbers();
+  updateBatchAddStatus();
+}
+
+function clearBatchRow(row) {
+  row.querySelector(".batch-row__description").value = "";
+  row.querySelector(".batch-row__quantity").value = "1";
+
+  const defaults = getDefaultBatchRowValues();
+  row.querySelector(".batch-row__category").value = defaults.categoryId;
+  row.querySelector(".batch-row__container").value = defaults.container;
+  row.querySelector(".batch-row__location").value = defaults.location;
+  applyCategoryDefaultsToRow(row, defaults.categoryId);
+}
+
+function updateBatchRowNumbers() {
+  [...batchAddRows.querySelectorAll(".batch-row")].forEach((row, index) => {
+    const label = row.querySelector(".batch-row__number");
+    if (label) label.textContent = `Item ${index + 1}`;
+  });
+}
+
+function resetBatchAddForm() {
+  batchRowCounter = 0;
+  batchAddRows.innerHTML = "";
+  batchDateInput.value = todayString();
+  batchAddStatus.textContent = "";
+
+  for (let index = 0; index < BATCH_DEFAULT_ROW_COUNT; index += 1) {
+    appendBatchRow({}, { focus: false });
+  }
+
+  const firstDescription = batchAddRows.querySelector(".batch-row__description");
+  if (firstDescription) firstDescription.focus();
+  updateBatchAddStatus();
+}
+
+function getFilledBatchRows() {
+  return [...batchAddRows.querySelectorAll(".batch-row")].filter((row) =>
+    row.querySelector(".batch-row__description").value.trim()
+  );
+}
+
+function updateBatchAddStatus() {
+  const filledRows = getFilledBatchRows();
+  const count = filledRows.length;
+
+  batchAddSubmitBtn.disabled = count === 0;
+  batchAddSubmitBtn.textContent =
+    count === 0 ? "Add to fridge" : count === 1 ? "Add 1 item to fridge" : `Add ${count} items to fridge`;
+
+  if (count === 0) {
+    batchAddStatus.textContent = "Fill in at least one description to add items.";
+    return;
+  }
+
+  const date = batchDateInput.value;
+  if (!date) {
+    batchAddStatus.textContent = "";
+    return;
+  }
+
+  batchAddStatus.textContent =
+    count === 1
+      ? "Ready to add 1 item."
+      : `Ready to add ${count} items with date ${formatDisplayDate(date)}.`;
+}
+
+function fillBatchRowsFromShoppingList() {
+  const unchecked = shoppingItems.filter((item) => !item.checked);
+  if (!unchecked.length) {
+    batchAddStatus.textContent = "Your shopping list has no unchecked items to fill.";
+    return;
+  }
+
+  const existingDescriptions = new Set(
+    [...batchAddRows.querySelectorAll(".batch-row__description")]
+      .map((input) => input.value.trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  let added = 0;
+  unchecked.forEach((item) => {
+    const normalized = item.text.trim().toLowerCase();
+    if (!normalized || existingDescriptions.has(normalized)) return;
+
+    appendBatchRow({ description: item.text.trim() }, { focus: false });
+    existingDescriptions.add(normalized);
+    added += 1;
+  });
+
+  batchAddStatus.textContent =
+    added === 0
+      ? "Those shopping list items are already in the batch form."
+      : `Added ${added} item${added === 1 ? "" : "s"} from your shopping list.`;
+  updateBatchAddStatus();
+}
+
 function handleCategoryChange() {
   applyCategoryDefaults(categoryInput.value);
   updateEatByPreview();
@@ -614,6 +918,190 @@ function updateDescriptionDatalist() {
   descriptionPresetsDatalist.innerHTML = settings.presets
     .map((preset) => `<option value="${escapeHtml(preset.description)}"></option>`)
     .join("");
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not read that image."));
+    };
+    image.src = url;
+  });
+}
+
+async function compressImageFile(file) {
+  if (!file?.type?.startsWith("image/")) {
+    throw new Error("Please choose an image file.");
+  }
+
+  const image = typeof createImageBitmap === "function"
+    ? await createImageBitmap(file).then((bitmap) => {
+        const canvas = document.createElement("canvas");
+        const scale = Math.min(1, PRESET_PHOTO_MAX_PX / Math.max(bitmap.width, bitmap.height));
+        canvas.width = Math.round(bitmap.width * scale);
+        canvas.height = Math.round(bitmap.height * scale);
+        canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close?.();
+        return canvas;
+      })
+    : await loadImageFromFile(file).then((img) => {
+        const canvas = document.createElement("canvas");
+        const scale = Math.min(1, PRESET_PHOTO_MAX_PX / Math.max(img.width, img.height));
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        return canvas;
+      });
+
+  let quality = PRESET_PHOTO_JPEG_QUALITY;
+  let dataUrl = image.toDataURL("image/jpeg", quality);
+
+  while (dataUrl.length > PRESET_PHOTO_MAX_BYTES && quality > 0.4) {
+    quality -= 0.1;
+    dataUrl = image.toDataURL("image/jpeg", quality);
+  }
+
+  if (dataUrl.length > PRESET_PHOTO_MAX_BYTES) {
+    throw new Error("Photo is too large. Try cropping closer to the product.");
+  }
+
+  return dataUrl;
+}
+
+function setPresetPhotoPreview(previewEl, photoDataUrl) {
+  if (!previewEl) return;
+
+  if (photoDataUrl) {
+    previewEl.classList.remove("preset-photo-preview--empty");
+    previewEl.innerHTML = `<img src="${photoDataUrl}" alt="" />`;
+    return;
+  }
+
+  previewEl.classList.add("preset-photo-preview--empty");
+  previewEl.textContent = "No photo";
+}
+
+function clearPendingPresetAddPhoto() {
+  pendingPresetAddPhoto = null;
+  if (presetAddPhotoInput) presetAddPhotoInput.value = "";
+  setPresetPhotoPreview(presetAddPhotoPreview, null);
+  presetAddPhotoRemoveBtn?.classList.add("hidden");
+}
+
+async function handlePresetAddPhotoSelected(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  try {
+    pendingPresetAddPhoto = await compressImageFile(file);
+    setPresetPhotoPreview(presetAddPhotoPreview, pendingPresetAddPhoto);
+    presetAddPhotoRemoveBtn?.classList.remove("hidden");
+  } catch (error) {
+    clearPendingPresetAddPhoto();
+    alert(error.message || "Could not use that photo.");
+  }
+}
+
+async function handlePresetEditPhotoSelected(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  const previewEl = event.target
+    .closest(".settings-preset-form")
+    ?.querySelector("[data-preset-photo-preview]");
+  const removeBtn = event.target
+    .closest(".settings-preset-form")
+    ?.querySelector("[data-preset-photo-remove]");
+
+  try {
+    presetEditPhoto = await compressImageFile(file);
+    setPresetPhotoPreview(previewEl, presetEditPhoto);
+    removeBtn?.classList.remove("hidden");
+  } catch (error) {
+    alert(error.message || "Could not use that photo.");
+  }
+}
+
+function getPresetsWithPhotos() {
+  return settings.presets.filter((preset) => preset.photo);
+}
+
+function getContainerForCategory(categoryId) {
+  const defaults = CATEGORY_ADD_DEFAULTS[categoryId];
+  if (defaults?.container && settings.containers.some((item) => item.label === defaults.container)) {
+    return defaults.container;
+  }
+  return settings.containers[0]?.label || "Other";
+}
+
+function addLeftoverFromPreset(preset) {
+  return addOrIncrementLeftover({
+    dateAdded: todayString(),
+    description: preset.description,
+    quantity: 1,
+    category: preset.categoryId,
+    container: getContainerForCategory(preset.categoryId),
+    location: preset.location,
+  });
+}
+
+function setPhotoAddStatus(message) {
+  if (photoAddStatus) photoAddStatus.textContent = message;
+}
+
+function renderPhotoAddPage() {
+  const presets = getPresetsWithPhotos();
+
+  if (!presets.length) {
+    photoAddGrid.innerHTML = "";
+    photoAddEmpty?.classList.remove("hidden");
+    setPhotoAddStatus("");
+    return;
+  }
+
+  photoAddEmpty?.classList.add("hidden");
+  photoAddGrid.innerHTML = presets
+    .map(
+      (preset) => `
+        <button type="button" class="photo-add-tile" data-preset-id="${escapeHtml(preset.id)}">
+          <span class="photo-add-tile__image-wrap">
+            <img src="${preset.photo}" alt="" class="photo-add-tile__image" />
+          </span>
+          <span class="photo-add-tile__label">${escapeHtml(preset.description)}</span>
+          <span class="photo-add-tile__meta">${escapeHtml(getCategoryLabel(preset.categoryId))} · ${escapeHtml(preset.location)}</span>
+        </button>
+      `
+    )
+    .join("");
+
+  photoAddGrid.querySelectorAll(".photo-add-tile").forEach((button) => {
+    button.addEventListener("click", () => handlePhotoAddTap(button));
+  });
+}
+
+function handlePhotoAddTap(button) {
+  const preset = settings.presets.find((item) => item.id === button.dataset.presetId);
+  if (!preset) return;
+
+  const item = addLeftoverFromPreset(preset);
+  if (!item) return;
+
+  saveLeftovers();
+  button.classList.add("photo-add-tile--added");
+  window.setTimeout(() => button.classList.remove("photo-add-tile--added"), 700);
+
+  const qty = getItemQuantity(item);
+  const qtyLabel = qty > 1 ? ` (now ×${qty})` : "";
+  setPhotoAddStatus(`${preset.description} added${qtyLabel}.`);
 }
 
 function populatePresetFormSelects(form) {
@@ -751,6 +1239,14 @@ function navigateTo(page) {
     applyCategoryDefaults(categoryInput.value);
     updateEatByPreview();
     descriptionInput.focus();
+  }
+  if (page === "add-batch") {
+    populateDropdowns();
+    updateDescriptionDatalist();
+    resetBatchAddForm();
+  }
+  if (page === "add-photo") {
+    renderPhotoAddPage();
   }
 }
 
@@ -954,21 +1450,65 @@ function formatFridgeItemLabel(item) {
   return `${escapeHtml(item.description)} (${getItemQuantity(item)})`;
 }
 
+function createLeftoverItem({ dateAdded, description, quantity, category, container, location }) {
+  const trimmedDescription = description.trim();
+  if (!trimmedDescription) return null;
+
+  return {
+    id: crypto.randomUUID(),
+    dateAdded,
+    description: trimmedDescription,
+    quantity: Math.max(1, Math.min(MAX_ITEM_QUANTITY, Number(quantity) || 1)),
+    category,
+    container,
+    location,
+    eatBy: addDays(dateAdded, getCategoryDays(category)),
+  };
+}
+
+function normalizeDescription(description) {
+  return String(description || "").trim().toLowerCase();
+}
+
+function findLeftoverByDescription(description) {
+  const normalized = normalizeDescription(description);
+  if (!normalized) return null;
+  return leftovers.find((item) => normalizeDescription(item.description) === normalized) || null;
+}
+
+function addOrIncrementLeftover(itemData) {
+  const trimmedDescription = itemData.description.trim();
+  if (!trimmedDescription) return null;
+
+  const existing = findLeftoverByDescription(trimmedDescription);
+  const addQty = Math.max(1, Math.min(MAX_ITEM_QUANTITY, Number(itemData.quantity) || 1));
+
+  if (existing) {
+    existing.quantity = Math.min(MAX_ITEM_QUANTITY, getItemQuantity(existing) + addQty);
+    return existing;
+  }
+
+  const item = createLeftoverItem({ ...itemData, description: trimmedDescription });
+  if (!item) return null;
+
+  leftovers.unshift(item);
+  return item;
+}
+
 function handleSubmit(event) {
   event.preventDefault();
 
-  const item = {
-    id: crypto.randomUUID(),
+  const item = addOrIncrementLeftover({
     dateAdded: dateInput.value,
-    description: descriptionInput.value.trim(),
-    quantity: Number(quantityInput.value),
+    description: descriptionInput.value,
+    quantity: quantityInput.value,
     category: categoryInput.value,
     container: containerInput.value,
     location: locationInput.value,
-    eatBy: addDays(dateInput.value, getCategoryDays(categoryInput.value)),
-  };
+  });
 
-  leftovers.unshift(item);
+  if (!item) return;
+
   saveLeftovers();
 
   descriptionInput.value = "";
@@ -977,6 +1517,34 @@ function handleSubmit(event) {
   locationInput.selectedIndex = 0;
   dateInput.value = todayString();
   updateEatByPreview();
+  navigateTo(returnPage);
+}
+
+function handleBatchSubmit(event) {
+  event.preventDefault();
+
+  const dateAdded = batchDateInput.value;
+  if (!dateAdded) return;
+
+  const added = getFilledBatchRows()
+    .map((row) =>
+      addOrIncrementLeftover({
+        dateAdded,
+        description: row.querySelector(".batch-row__description").value,
+        quantity: row.querySelector(".batch-row__quantity").value,
+        category: row.querySelector(".batch-row__category").value,
+        container: row.querySelector(".batch-row__container").value,
+        location: row.querySelector(".batch-row__location").value,
+      })
+    )
+    .filter(Boolean);
+
+  if (!added.length) {
+    updateBatchAddStatus();
+    return;
+  }
+
+  saveLeftovers();
   navigateTo(returnPage);
 }
 
@@ -1444,11 +2012,30 @@ function renderPresetsList() {
       const isEditing = settingsEdit.type === "presets" && settingsEdit.id === item.id;
       const categoryLabel = getCategoryLabel(item.categoryId);
       const meta = `${escapeHtml(categoryLabel)} · ${escapeHtml(item.location)}`;
+      const photoPreview = item.photo
+        ? `<img src="${item.photo}" alt="" />`
+        : `<span class="settings-item__photo-placeholder" aria-hidden="true">📷</span>`;
 
       if (isEditing) {
+        const editPhoto = presetEditPhoto === undefined ? item.photo : presetEditPhoto;
         return `
-          <li class="settings-item settings-item--editing">
+          <li class="settings-item settings-item--editing settings-item--preset">
             <form class="settings-edit-form settings-preset-form" data-setting-type="presets" data-item-id="${item.id}">
+              <div class="preset-photo-control preset-photo-control--edit">
+                <div class="preset-photo-preview${editPhoto ? "" : " preset-photo-preview--empty"}" data-preset-photo-preview aria-hidden="true">
+                  ${editPhoto ? `<img src="${editPhoto}" alt="" />` : "No photo"}
+                </div>
+                <div class="preset-photo-control__actions">
+                  <input
+                    type="file"
+                    class="hidden preset-edit-photo-input"
+                    accept="image/*"
+                    aria-label="Choose product photo"
+                  />
+                  <button type="button" class="btn btn--ghost btn--small" data-preset-photo-choose>Choose photo</button>
+                  <button type="button" class="btn btn--ghost btn--small${editPhoto ? "" : " hidden"}" data-preset-photo-remove>Remove</button>
+                </div>
+              </div>
               <input type="text" name="description" value="${escapeHtml(item.description)}" required maxlength="120" />
               <select name="categoryId" required>${categoryOptionsHtml(item.categoryId)}</select>
               <select name="location" required>${locationOptionsHtml(item.location)}</select>
@@ -1465,7 +2052,8 @@ function renderPresetsList() {
       const canMoveDown = index < items.length - 1;
 
       return `
-        <li class="settings-item">
+        <li class="settings-item settings-item--preset">
+          <div class="settings-item__photo">${photoPreview}</div>
           <div class="settings-item__info">
             <span class="settings-item__label">${escapeHtml(item.description)}</span>
             <span class="settings-item__meta">${meta}</span>
@@ -1488,8 +2076,22 @@ function renderPresetsList() {
   listEl.querySelectorAll(".settings-edit-form").forEach((editForm) => {
     editForm.addEventListener("submit", handleSettingsEditSave);
     editForm.querySelector('[data-action="cancel"]')?.addEventListener("click", () => {
+      presetEditPhoto = undefined;
       settingsEdit = { type: null, id: null };
       renderCurrentSettingsPage();
+    });
+
+    const photoInput = editForm.querySelector(".preset-edit-photo-input");
+    const chooseBtn = editForm.querySelector("[data-preset-photo-choose]");
+    const removeBtn = editForm.querySelector("[data-preset-photo-remove]");
+    const previewEl = editForm.querySelector("[data-preset-photo-preview]");
+
+    chooseBtn?.addEventListener("click", () => photoInput?.click());
+    photoInput?.addEventListener("change", handlePresetEditPhotoSelected);
+    removeBtn?.addEventListener("click", () => {
+      presetEditPhoto = null;
+      setPresetPhotoPreview(previewEl, null);
+      removeBtn.classList.add("hidden");
     });
   });
 }
@@ -1512,10 +2114,12 @@ function handlePresetAdd(event) {
     description,
     categoryId,
     location,
+    ...(pendingPresetAddPhoto ? { photo: pendingPresetAddPhoto } : {}),
   });
 
   saveSettings();
   formEl.reset();
+  clearPendingPresetAddPhoto();
   populatePresetFormSelects(formEl);
   renderCurrentSettingsPage();
 }
@@ -1606,6 +2210,7 @@ function handleSettingsAction(btn) {
   if (!action || !type || !id) return;
 
   if (action === "edit") {
+    if (type === "presets") presetEditPhoto = undefined;
     settingsEdit = { type, id };
     renderCurrentSettingsPage();
     return;
@@ -1667,6 +2272,14 @@ function handleSettingsEditSave(event) {
     item.description = description;
     item.categoryId = categoryId;
     item.location = location;
+
+    if (presetEditPhoto === null) {
+      delete item.photo;
+    } else if (typeof presetEditPhoto === "string") {
+      item.photo = presetEditPhoto;
+    }
+    presetEditPhoto = undefined;
+
     settingsEdit = { type: null, id: null };
     saveSettings();
     renderCurrentSettingsPage();

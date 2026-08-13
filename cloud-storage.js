@@ -1,5 +1,6 @@
 const KITCHEN_KEY_STORAGE = "leftovers-kitchen-key";
 const DEVICE_ID_KEY = "leftovers-device-id";
+const LOCAL_DEV_STORAGE_KEY = "leftovers-local-dev-kitchen";
 
 const LEGACY_STORAGE_KEYS = [
   "leftovers-fridge",
@@ -29,6 +30,36 @@ let syncStatus = {
 function getApiUrl() {
   if (window.location.protocol === "file:") return null;
   return `${window.location.origin}/.netlify/functions/sync-kitchen`;
+}
+
+function isLocalDevHost() {
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1";
+}
+
+function readLocalDevKitchen() {
+  try {
+    const raw = localStorage.getItem(LOCAL_DEV_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalDevKitchen(payload) {
+  localStorage.setItem(LOCAL_DEV_STORAGE_KEY, JSON.stringify(payload));
+}
+
+function buildLocalDevKitchen(payload) {
+  return {
+    kitchen_key: getKitchenKey(),
+    settings: payload.settings,
+    leftovers: payload.leftovers,
+    shopping: payload.shopping,
+    email: payload.email,
+    notifications_enabled: payload.notifications_enabled,
+    notify_days_before: payload.notify_days_before,
+  };
 }
 
 function normalizeKitchenKey(raw) {
@@ -141,6 +172,22 @@ async function fetchKitchenFromApi(params) {
     throw new Error("Cloud storage requires the Netlify-deployed app.");
   }
 
+  if (isLocalDevHost()) {
+    try {
+      const query = new URLSearchParams(params);
+      const response = await fetch(`${apiUrl}?${query.toString()}`);
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.ok) {
+        return data.kitchen || null;
+      }
+    } catch {
+      // Fall back to browser storage for local desktop testing.
+    }
+
+    const stored = readLocalDevKitchen();
+    return stored ? buildLocalDevKitchen(stored) : null;
+  }
+
   const query = new URLSearchParams(params);
   const response = await fetch(`${apiUrl}?${query.toString()}`);
   const data = await response.json().catch(() => ({}));
@@ -178,22 +225,50 @@ async function saveKitchen(payload) {
   notifyStatusListeners();
 
   try {
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        kitchen_key: getKitchenKey(),
-        device_id: getDeviceId(),
-        ...payload,
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
+    if (!isLocalDevHost()) {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kitchen_key: getKitchenKey(),
+          device_id: getDeviceId(),
+          ...payload,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
 
-    if (!response.ok || !data.ok) {
-      throw new Error(data.error || "Could not save to the cloud.");
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Could not save to the cloud.");
+      }
+
+      syncStatus.lastSyncedAt = data.syncedAt || new Date().toISOString();
+      syncStatus.lastSyncError = null;
+      return { ok: true, syncedAt: syncStatus.lastSyncedAt };
     }
 
-    syncStatus.lastSyncedAt = data.syncedAt || new Date().toISOString();
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kitchen_key: getKitchenKey(),
+          device_id: getDeviceId(),
+          ...payload,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok && data.ok) {
+        syncStatus.lastSyncedAt = data.syncedAt || new Date().toISOString();
+        syncStatus.lastSyncError = null;
+        return { ok: true, syncedAt: syncStatus.lastSyncedAt };
+      }
+    } catch {
+      // Fall back to browser storage for local desktop testing.
+    }
+
+    writeLocalDevKitchen(payload);
+    syncStatus.lastSyncedAt = new Date().toISOString();
     syncStatus.lastSyncError = null;
     return { ok: true, syncedAt: syncStatus.lastSyncedAt };
   } catch (error) {

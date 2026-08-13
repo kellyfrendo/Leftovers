@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#2b6cb0" />
     <title>Leftovers — Fridge Tracker</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=7" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -43,6 +43,16 @@
             <span class="home-nav__icon" aria-hidden="true">🧊</span>
             <span class="home-nav__label">What's In Our Fridge?</span>
             <span class="home-nav__desc">Browse by location.</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="add-batch" data-return="fridge">
+            <span class="home-nav__icon" aria-hidden="true">🛍️</span>
+            <span class="home-nav__label">Batch Add Groceries</span>
+            <span class="home-nav__desc">Add everything from a shopping trip at once.</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="add-photo">
+            <span class="home-nav__icon" aria-hidden="true">📷</span>
+            <span class="home-nav__label">Add by Photo</span>
+            <span class="home-nav__desc">Tap a product photo to add it to the fridge.</span>
           </button>
           <button type="button" class="home-nav__btn" data-page="leftovers">
             <span class="home-nav__icon" aria-hidden="true">🥡</span>
@@ -87,6 +97,67 @@
           </div>
 
           <ul id="leftover-list" class="leftover-list" aria-live="polite"></ul>
+        </section>
+      </section>
+
+      <section id="page-add-photo" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="home">← Home</button>
+          <div class="page-header__title">
+            <h1>Add by Photo</h1>
+            <p class="page-header__subtitle">Tap a product to add it to the fridge.</p>
+          </div>
+        </header>
+
+        <section class="panel" aria-labelledby="photo-add-heading">
+          <h2 id="photo-add-heading" class="visually-hidden">Product photos</h2>
+          <p id="photo-add-status" class="photo-add-status" role="status" aria-live="polite"></p>
+
+          <div id="photo-add-empty" class="empty-state hidden">
+            <p class="empty-state__icon" aria-hidden="true">📷</p>
+            <p class="empty-state__title">No product photos yet</p>
+            <p class="empty-state__text">
+              Add photos to your food shortcuts in Settings, then they will appear here.
+            </p>
+            <button type="button" class="btn btn--primary" data-page="settings-presets">Food shortcuts</button>
+          </div>
+
+          <div id="photo-add-grid" class="photo-add-grid" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section id="page-add-batch" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" id="batch-add-back">← Back</button>
+          <div class="page-header__title">
+            <h1>Batch Add Groceries</h1>
+            <p class="page-header__subtitle">Add multiple items with one shared date.</p>
+          </div>
+        </header>
+
+        <section class="panel panel--form" aria-labelledby="batch-add-heading">
+          <h2 id="batch-add-heading" class="visually-hidden">Batch Add Groceries</h2>
+          <form id="batch-add-form" class="form">
+            <label class="field field--narrow">
+              <span class="field__label">Date added</span>
+              <input type="date" id="batch-date" name="date" required />
+            </label>
+
+            <div id="batch-add-rows" class="batch-add-rows" aria-live="polite"></div>
+
+            <div class="batch-add-actions">
+              <button type="button" id="batch-add-row" class="btn btn--ghost">+ Add another item</button>
+              <button type="button" id="batch-add-from-shopping" class="btn btn--ghost">
+                Fill from shopping list
+              </button>
+            </div>
+
+            <p class="form__hint" id="batch-add-status" role="status"></p>
+
+            <button type="submit" id="batch-add-submit" class="btn btn--primary" disabled>
+              Add to fridge
+            </button>
+          </form>
         </section>
       </section>
 
@@ -153,9 +224,14 @@
         <header class="page-header">
           <div class="page-header__actions">
             <button type="button" class="btn btn--back" data-page="home">← Home</button>
-            <button type="button" class="btn btn--primary btn--small" data-page="add" data-return="fridge">
-              Add Item
-            </button>
+            <div class="page-header__action-group">
+              <button type="button" class="btn btn--ghost btn--small" data-page="add-batch" data-return="fridge">
+                Batch Add
+              </button>
+              <button type="button" class="btn btn--primary btn--small" data-page="add" data-return="fridge">
+                Add Item
+              </button>
+            </div>
           </div>
           <div class="page-header__title">
             <h1>What's In Our Fridge?</h1>
@@ -401,7 +477,7 @@
           <div class="page-header__title">
             <h1>Food shortcuts</h1>
             <p class="page-header__subtitle">
-              Match a description when adding items to fill in category and location automatically.
+              Save description, category, location, and an optional photo for quick add-by-photo.
             </p>
           </div>
         </header>
@@ -413,6 +489,25 @@
             <input type="text" name="description" placeholder="Description e.g. Water" required maxlength="120" />
             <select name="categoryId" required aria-label="Default category"></select>
             <select name="location" required aria-label="Default location"></select>
+            <div class="preset-photo-field">
+              <span class="field__label">Product photo (optional)</span>
+              <div class="preset-photo-control">
+                <div id="preset-add-photo-preview" class="preset-photo-preview preset-photo-preview--empty" aria-hidden="true">
+                  No photo
+                </div>
+                <div class="preset-photo-control__actions">
+                  <input
+                    type="file"
+                    id="preset-add-photo-input"
+                    accept="image/*"
+                    class="hidden"
+                    aria-label="Choose product photo"
+                  />
+                  <button type="button" id="preset-add-photo-btn" class="btn btn--ghost btn--small">Choose photo</button>
+                  <button type="button" id="preset-add-photo-remove" class="btn btn--ghost btn--small hidden">Remove</button>
+                </div>
+              </div>
+            </div>
             <button type="submit" class="btn btn--primary btn--small">Add</button>
           </form>
         </section>
@@ -525,9 +620,9 @@
       </section>
     </div>
 
-    <script src="cloud-storage.js?v=3"></script>
+    <script src="cloud-storage.js?v=4"></script>
     <script src="kitchen-link.js?v=2"></script>
     <script src="notifications.js?v=3"></script>
-    <script src="app.js?v=9"></script>
+    <script src="app.js?v=12"></script>
   </body>
 </html>
