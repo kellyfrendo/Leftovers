@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#2b6cb0" />
     <title>Leftovers — Fridge Tracker</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="styles.css?v=9" />
+    <link rel="stylesheet" href="styles.css?v=11" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -38,36 +38,30 @@
           <p class="home-header__tagline">Kitchen Companion v 4.0 (batch add)</p>
         </header>
 
-        <nav class="home-nav" aria-label="Main menu">
+        <nav class="home-nav home-nav--inline" aria-label="Main menu">
           <button type="button" class="home-nav__btn" data-page="fridge">
             <span class="home-nav__icon" aria-hidden="true">🧊</span>
             <span class="home-nav__label">What's In Our Fridge?</span>
-            <span class="home-nav__desc">Browse by location.</span>
           </button>
           <button type="button" class="home-nav__btn" data-page="leftovers">
             <span class="home-nav__icon" aria-hidden="true">🥡</span>
             <span class="home-nav__label">View Leftovers</span>
-            <span class="home-nav__desc">Find cooked stuff that needs to be eaten.</span>
-          </button>
-          <button type="button" class="home-nav__btn" data-page="add-batch" data-return="fridge">
-            <span class="home-nav__icon" aria-hidden="true">🛍️</span>
-            <span class="home-nav__label">Batch Add Groceries</span>
-            <span class="home-nav__desc">Add everything from a shopping trip at once.</span>
-          </button>
-          <button type="button" class="home-nav__btn" data-page="add-photo">
-            <span class="home-nav__icon" aria-hidden="true">📷</span>
-            <span class="home-nav__label">Add by Photo</span>
-            <span class="home-nav__desc">Tap a product photo to add it to the fridge.</span>
           </button>
           <button type="button" class="home-nav__btn" data-page="shopping">
             <span class="home-nav__icon" aria-hidden="true">🛒</span>
             <span class="home-nav__label">Shopping List</span>
-            <span class="home-nav__desc">What do we need to buy?</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="recipe">
+            <span class="home-nav__icon" aria-hidden="true">📖</span>
+            <span class="home-nav__label">Check Recipe</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="add-groceries">
+            <span class="home-nav__icon" aria-hidden="true">🛍️</span>
+            <span class="home-nav__label">Add Groceries</span>
           </button>
           <button type="button" class="home-nav__btn home-nav__btn--settings" data-page="settings">
             <span class="home-nav__icon" aria-hidden="true">⚙️</span>
             <span class="home-nav__label">Settings</span>
-            <span class="home-nav__desc">Shared kitchen, categories, notifications, and more.</span>
           </button>
         </nav>
       </section>
@@ -100,9 +94,37 @@
         </section>
       </section>
 
-      <section id="page-add-photo" class="page hidden">
+      <section id="page-add-groceries" class="page hidden">
         <header class="page-header">
           <button type="button" class="btn btn--back" data-page="home">← Home</button>
+          <div class="page-header__title">
+            <h1>Add Groceries</h1>
+            <p class="page-header__subtitle">Choose how you want to add items to the fridge.</p>
+          </div>
+        </header>
+
+        <nav class="home-nav" aria-label="Add groceries options">
+          <button type="button" class="home-nav__btn" data-page="add" data-return="add-groceries">
+            <span class="home-nav__icon" aria-hidden="true">➕</span>
+            <span class="home-nav__label">Add Item</span>
+            <span class="home-nav__desc">Add a single item with full details.</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="add-batch" data-return="add-groceries">
+            <span class="home-nav__icon" aria-hidden="true">🛍️</span>
+            <span class="home-nav__label">Batch Add</span>
+            <span class="home-nav__desc">Add everything from a shopping trip at once.</span>
+          </button>
+          <button type="button" class="home-nav__btn" data-page="add-photo" data-return="add-groceries">
+            <span class="home-nav__icon" aria-hidden="true">📷</span>
+            <span class="home-nav__label">Add By Photo</span>
+            <span class="home-nav__desc">Tap a product photo to add it to the fridge.</span>
+          </button>
+        </nav>
+      </section>
+
+      <section id="page-add-photo" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" id="add-photo-back">← Back</button>
           <div class="page-header__title">
             <h1>Add by Photo</h1>
             <p class="page-header__subtitle">Tap a product to add it to the fridge.</p>
@@ -279,6 +301,46 @@
         </div>
 
         <div id="fridge-by-location" class="fridge-locations" aria-live="polite"></div>
+      </section>
+
+      <section id="page-recipe" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="home">← Home</button>
+          <div class="page-header__title">
+            <h1>Check a Recipe</h1>
+            <p class="page-header__subtitle">Find what you already have and what to add to your shopping list.</p>
+          </div>
+        </header>
+
+        <section class="panel panel--form" aria-labelledby="recipe-form-heading">
+          <h2 id="recipe-form-heading" class="visually-hidden">Recipe input</h2>
+          <form id="recipe-form" class="form">
+            <label class="field">
+              <span class="field__label">Paste ingredients list</span>
+              <textarea
+                id="recipe-text"
+                rows="8"
+                placeholder="Paste ingredients or the full recipe here…"
+              ></textarea>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Or recipe URL</span>
+              <input type="url" id="recipe-url" placeholder="https://example.com/recipe" inputmode="url" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">Or recipe photo</span>
+              <input type="file" id="recipe-image" accept="image/*" />
+              <span class="form__hint">Photo and URL parsing need AI enabled on Netlify.</span>
+            </label>
+
+            <button type="submit" id="recipe-analyze" class="btn btn--primary">Check ingredients</button>
+          </form>
+
+          <p id="recipe-status" class="recipe-status" role="status" aria-live="polite"></p>
+          <div id="recipe-results" class="recipe-results hidden" aria-live="polite"></div>
+        </section>
       </section>
 
       <section id="page-shopping" class="page hidden">
@@ -671,6 +733,7 @@
     <script src="cloud-storage.js?v=4"></script>
     <script src="kitchen-link.js?v=2"></script>
     <script src="notifications.js?v=3"></script>
-    <script src="app.js?v=17"></script>
+    <script src="recipe.js?v=2"></script>
+    <script src="app.js?v=19"></script>
   </body>
 </html>

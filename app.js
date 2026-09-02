@@ -142,10 +142,12 @@ const PAGES = {
   home: document.getElementById("page-home"),
   leftovers: document.getElementById("page-leftovers"),
   add: document.getElementById("page-add"),
+  "add-groceries": document.getElementById("page-add-groceries"),
   "add-batch": document.getElementById("page-add-batch"),
   "add-photo": document.getElementById("page-add-photo"),
   fridge: document.getElementById("page-fridge"),
   shopping: document.getElementById("page-shopping"),
+  recipe: document.getElementById("page-recipe"),
   settings: document.getElementById("page-settings"),
   "settings-categories": document.getElementById("page-settings-categories"),
   "settings-containers": document.getElementById("page-settings-containers"),
@@ -186,6 +188,7 @@ const form = document.getElementById("add-form");
 const addBackBtn = document.getElementById("add-back");
 const batchAddForm = document.getElementById("batch-add-form");
 const batchAddBackBtn = document.getElementById("batch-add-back");
+const addPhotoBackBtn = document.getElementById("add-photo-back");
 const batchDateInput = document.getElementById("batch-date");
 const batchAddRows = document.getElementById("batch-add-rows");
 const batchAddRowBtn = document.getElementById("batch-add-row");
@@ -265,7 +268,10 @@ async function init() {
 
   document.querySelectorAll("[data-page]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if ((btn.dataset.page === "add" || btn.dataset.page === "add-batch") && btn.dataset.return) {
+      if (
+        (btn.dataset.page === "add" || btn.dataset.page === "add-batch" || btn.dataset.page === "add-photo") &&
+        btn.dataset.return
+      ) {
         returnPage = btn.dataset.return;
       }
       navigateTo(btn.dataset.page);
@@ -274,6 +280,7 @@ async function init() {
 
   addBackBtn.addEventListener("click", () => navigateTo(returnPage));
   batchAddBackBtn.addEventListener("click", () => navigateTo(returnPage));
+  addPhotoBackBtn?.addEventListener("click", () => navigateTo(returnPage));
 
   leftoversAddItemBtn.addEventListener("click", openAddItemFromLeftovers);
 
@@ -321,6 +328,16 @@ async function init() {
 
   window.LeftoversNotifications?.bindNotificationsUI();
   window.LeftoversKitchenLink?.bindKitchenLinkUI();
+  window.LeftoversRecipe?.bindUI({
+    getLeftovers: () => leftovers,
+    getShopping: () => shoppingItems,
+    getSettings: () => settings,
+    addToShoppingList,
+    onShoppingUpdated: () => {
+      if (currentPage === "shopping") renderShopping();
+    },
+    escapeHtml,
+  });
   navigateTo("home");
 }
 
@@ -1348,6 +1365,9 @@ function navigateTo(page) {
   }
   if (page === "add-photo") {
     renderPhotoAddPage();
+  }
+  if (page === "recipe") {
+    window.LeftoversRecipe?.resetPage();
   }
 }
 
