@@ -316,23 +316,12 @@
           <h2 id="recipe-form-heading" class="visually-hidden">Recipe input</h2>
           <form id="recipe-form" class="form">
             <label class="field">
-              <span class="field__label">Paste ingredients list</span>
+              <span class="field__label">Paste</span>
               <textarea
                 id="recipe-text"
                 rows="8"
                 placeholder="Paste ingredients or the full recipe here…"
               ></textarea>
-            </label>
-
-            <label class="field">
-              <span class="field__label">Or recipe URL</span>
-              <input type="url" id="recipe-url" placeholder="https://example.com/recipe" inputmode="url" />
-            </label>
-
-            <label class="field">
-              <span class="field__label">Or recipe photo</span>
-              <input type="file" id="recipe-image" accept="image/*" />
-              <span class="form__hint">Photo and URL parsing need AI enabled on Netlify.</span>
             </label>
 
             <button type="submit" id="recipe-analyze" class="btn btn--primary">Check ingredients</button>
@@ -733,7 +722,7 @@
     <script src="cloud-storage.js?v=4"></script>
     <script src="kitchen-link.js?v=2"></script>
     <script src="notifications.js?v=3"></script>
-    <script src="recipe.js?v=2"></script>
+    <script src="recipe.js?v=3"></script>
     <script src="app.js?v=19"></script>
   </body>
 </html>

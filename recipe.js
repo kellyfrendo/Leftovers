@@ -1,7 +1,4 @@
 (function () {
-  const RECIPE_IMAGE_MAX_PX = 1200;
-  const RECIPE_IMAGE_MAX_BYTES = 900000;
-
   let bindings = null;
   let lastAnalysis = null;
 
@@ -128,56 +125,6 @@
     });
   }
 
-  async function compressRecipeImage(file) {
-    const bitmap = typeof createImageBitmap === "function"
-      ? await createImageBitmap(file)
-      : await loadImageFromFile(file);
-
-    const width = bitmap.width || bitmap.naturalWidth;
-    const height = bitmap.height || bitmap.naturalHeight;
-    const scale = Math.min(1, RECIPE_IMAGE_MAX_PX / Math.max(width, height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(width * scale);
-    canvas.height = Math.round(height * scale);
-
-    const ctx = canvas.getContext("2d");
-    if (bitmap.close) {
-      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      bitmap.close();
-    } else {
-      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    }
-
-    let quality = 0.82;
-    let dataUrl = canvas.toDataURL("image/jpeg", quality);
-    while (dataUrl.length > RECIPE_IMAGE_MAX_BYTES && quality > 0.45) {
-      quality -= 0.08;
-      dataUrl = canvas.toDataURL("image/jpeg", quality);
-    }
-
-    if (dataUrl.length > RECIPE_IMAGE_MAX_BYTES) {
-      throw new Error("Recipe photo is too large. Try a closer crop.");
-    }
-
-    return dataUrl;
-  }
-
-  function loadImageFromFile(file) {
-    return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const image = new Image();
-      image.onload = () => {
-        URL.revokeObjectURL(url);
-        resolve(image);
-      };
-      image.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error("Could not read that image."));
-      };
-      image.src = url;
-    });
-  }
-
   function parseBasicIngredients(text) {
     const skipSection = /^(method|instructions|directions|steps|notes|nutrition|serves|servings|prep|cook|total|equipment)/i;
     const lines = String(text || "")
@@ -234,59 +181,32 @@
 
   async function parseRecipeInput() {
     const text = els.textInput?.value.trim() || "";
-    const url = els.urlInput?.value.trim() || "";
-    const file = els.imageInput?.files?.[0];
 
-    if (!text && !url && !file) {
-      throw new Error("Paste a recipe, enter a URL, or choose a photo.");
-    }
-
-    if (text && !url && !file) {
-      const apiUrl = getApiUrl();
-      if (!apiUrl) {
-        return localTextParse(text);
-      }
-
-      try {
-        const response = await fetch(apiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (response.ok && data.ok) return data;
-        if (!response.ok && data.error) throw new Error(data.error);
-      } catch (error) {
-        if (error.message && !/fetch|network|failed/i.test(error.message)) {
-          throw error;
-        }
-      }
-
-      return localTextParse(text);
+    if (!text) {
+      throw new Error("Paste an ingredients list.");
     }
 
     const apiUrl = getApiUrl();
     if (!apiUrl) {
-      throw new Error("URL and photo parsing need the Netlify-deployed app with AI enabled.");
+      return localTextParse(text);
     }
 
-    const payload = {};
-    if (text) payload.text = text;
-    if (url) payload.url = url;
-    if (file) payload.imageBase64 = await compressRecipeImage(file);
-
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) {
-      throw new Error(data.error || "Could not parse recipe.");
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.ok) return data;
+      if (!response.ok && data.error) throw new Error(data.error);
+    } catch (error) {
+      if (error.message && !/fetch|network|failed/i.test(error.message)) {
+        throw error;
+      }
     }
 
-    return data;
+    return localTextParse(text);
   }
 
   function setStatus(message, isError = false) {
@@ -377,8 +297,6 @@
   function cacheElements() {
     els.form = document.getElementById("recipe-form");
     els.textInput = document.getElementById("recipe-text");
-    els.urlInput = document.getElementById("recipe-url");
-    els.imageInput = document.getElementById("recipe-image");
     els.analyzeBtn = document.getElementById("recipe-analyze");
     els.statusEl = document.getElementById("recipe-status");
     els.resultsEl = document.getElementById("recipe-results");
