@@ -176,6 +176,7 @@ let settings = createDefaultSettings();
 let leftovers = [];
 let shoppingItems = [];
 let fridgeExcludedCategories = new Set();
+let inventoryLocationScope = "fridge";
 let currentPage = "home";
 let returnPage = "leftovers";
 let addFormDefaults = null;
@@ -208,6 +209,11 @@ const leftoversAddItemBtn = document.getElementById("leftovers-add-item");
 const fridgeByLocation = document.getElementById("fridge-by-location");
 const fridgeEmpty = document.getElementById("fridge-empty");
 const fridgeSummary = document.getElementById("fridge-summary");
+const fridgePageTitle = document.getElementById("fridge-page-title");
+const fridgeEmptyIcon = document.getElementById("fridge-empty-icon");
+const fridgeEmptyTitle = document.getElementById("fridge-empty-title");
+const fridgeAddBatchBtn = document.getElementById("fridge-add-batch");
+const fridgeAddItemBtn = document.getElementById("fridge-add-item");
 const fridgeFiltersPanel = document.getElementById("fridge-filters-panel");
 const fridgeCategoryFilters = document.getElementById("fridge-category-filters");
 const fridgeShowAllBtn = document.getElementById("fridge-show-all");
@@ -496,7 +502,7 @@ async function reloadFromCloud(kitchen) {
   populateDropdowns();
   updateDescriptionDatalist();
   if (currentPage === "leftovers") renderLeftovers();
-  if (currentPage === "fridge") renderFridgeOverview();
+  if (isInventoryBrowsePage()) renderFridgeOverview();
   if (currentPage === "shopping") renderShopping();
   if (SETTINGS_DETAIL_PAGES.has(currentPage)) renderSettingsPage(currentPage);
 }
@@ -649,7 +655,7 @@ function saveSettings() {
   applyAccessibilityTextSize();
   populateDropdowns();
   updateDescriptionDatalist();
-  if (currentPage === "fridge" && leftovers.length > 0) {
+  if (isInventoryBrowsePage() && leftovers.length > 0) {
     renderFridgeCategoryFilters();
   }
   window.LeftoversCloud?.queueSave();
@@ -1327,16 +1333,51 @@ function countLeftoversUsing(type, value) {
   return 0;
 }
 
+function isInventoryBrowsePage(page = currentPage) {
+  return page === "fridge" || page === "cupboard";
+}
+
+function getScopedLeftovers() {
+  return leftovers.filter((item) => {
+    const cupboard = isCupboardLocation(item.location);
+    if (inventoryLocationScope === "cupboard") return cupboard;
+    return !cupboard;
+  });
+}
+
+function updateInventoryPageChrome() {
+  const isCupboard = inventoryLocationScope === "cupboard";
+  if (fridgePageTitle) {
+    fridgePageTitle.textContent = isCupboard ? "What's In Our Cupboard?" : "What's In Our Fridge?";
+  }
+  if (fridgeEmptyIcon) fridgeEmptyIcon.textContent = isCupboard ? "🧺" : "🧊";
+  if (fridgeEmptyTitle) {
+    fridgeEmptyTitle.textContent = isCupboard ? "Nothing in the cupboard yet" : "Nothing in the fridge yet";
+  }
+  const returnTarget = isCupboard ? "cupboard" : "fridge";
+  if (fridgeAddBatchBtn) fridgeAddBatchBtn.dataset.return = returnTarget;
+  if (fridgeAddItemBtn) fridgeAddItemBtn.dataset.return = returnTarget;
+}
+
 function navigateTo(page) {
   currentPage = page;
 
   Object.entries(PAGES).forEach(([name, el]) => {
-    el.classList.toggle("hidden", name !== page);
+    const show = name === page || (page === "cupboard" && name === "fridge");
+    el.classList.toggle("hidden", !show);
   });
 
   if (page === "leftovers") renderLeftovers();
   if (page === "fridge") {
+    inventoryLocationScope = "fridge";
     hideAllFridgeCategories();
+    updateInventoryPageChrome();
+    renderFridgeOverview();
+  }
+  if (page === "cupboard") {
+    inventoryLocationScope = "cupboard";
+    hideAllFridgeCategories();
+    updateInventoryPageChrome();
     renderFridgeOverview();
   }
   if (page === "shopping") renderShopping();
@@ -1439,7 +1480,7 @@ function applyBackup(data) {
   populateDropdowns();
   updateDescriptionDatalist();
   if (currentPage === "leftovers") renderLeftovers();
-  if (currentPage === "fridge") renderFridgeOverview();
+  if (isInventoryBrowsePage()) renderFridgeOverview();
   if (currentPage === "shopping") renderShopping();
   if (SETTINGS_DETAIL_PAGES.has(currentPage)) renderSettingsPage(currentPage);
   window.LeftoversCloud?.saveNow().catch(() => {});
@@ -1673,7 +1714,7 @@ function removeLeftover(id) {
   leftovers = leftovers.filter((item) => item.id !== id);
   saveLeftovers();
   if (currentPage === "leftovers") renderLeftovers();
-  if (currentPage === "fridge") renderFridgeOverview();
+  if (isInventoryBrowsePage()) renderFridgeOverview();
   if (currentPage === "settings-inventory") renderInventory();
 }
 
@@ -1692,7 +1733,7 @@ function setLeftoverQuantity(id, quantity) {
   item.quantity = qty;
   saveLeftovers();
   if (currentPage === "leftovers") renderLeftovers();
-  if (currentPage === "fridge") renderFridgeOverview();
+  if (isInventoryBrowsePage()) renderFridgeOverview();
 }
 
 function reduceLeftoverQuantity(id) {
@@ -1712,7 +1753,7 @@ function reduceLeftoverQuantity(id) {
   item.quantity = nextQty;
   saveLeftovers();
   if (currentPage === "leftovers") renderLeftovers();
-  if (currentPage === "fridge") renderFridgeOverview();
+  if (isInventoryBrowsePage()) renderFridgeOverview();
 }
 
 function increaseLeftoverQuantity(id) {
@@ -1725,7 +1766,7 @@ function increaseLeftoverQuantity(id) {
   item.quantity = nextQty;
   saveLeftovers();
   if (currentPage === "leftovers") renderLeftovers();
-  if (currentPage === "fridge") renderFridgeOverview();
+  if (isInventoryBrowsePage()) renderFridgeOverview();
 }
 
 function relocateLeftover(id, newLocation) {
@@ -1734,7 +1775,7 @@ function relocateLeftover(id, newLocation) {
   item.location = newLocation;
   saveLeftovers();
   if (currentPage === "leftovers") renderLeftovers();
-  if (currentPage === "fridge") renderFridgeOverview();
+  if (isInventoryBrowsePage()) renderFridgeOverview();
 }
 
 function locationSelectHtml(itemId, currentLocation, className) {
@@ -1862,7 +1903,7 @@ function showAllFridgeCategories() {
 }
 
 function getFridgeVisibleLeftovers() {
-  return leftovers.filter((item) => {
+  return getScopedLeftovers().filter((item) => {
     const known = settings.categories.some((cat) => cat.id === item.category);
     if (!known) return true;
     return !fridgeExcludedCategories.has(item.category);
@@ -1909,7 +1950,10 @@ function renderFridgeCategoryFilters() {
 }
 
 function renderFridgeOverview() {
-  if (leftovers.length === 0) {
+  updateInventoryPageChrome();
+
+  const scoped = getScopedLeftovers();
+  if (scoped.length === 0) {
     fridgeEmpty.classList.remove("hidden");
     fridgeFiltersPanel.classList.add("hidden");
     fridgeFilterEmpty.classList.add("hidden");
@@ -1923,7 +1967,7 @@ function renderFridgeOverview() {
   renderFridgeCategoryFilters();
 
   const visible = getFridgeVisibleLeftovers();
-  fridgeSummary.textContent = `${visible.length} of ${leftovers.length} item${leftovers.length === 1 ? "" : "s"} shown`;
+  fridgeSummary.textContent = `${visible.length} of ${scoped.length} item${scoped.length === 1 ? "" : "s"} shown`;
 
   if (visible.length === 0) {
     fridgeFilterEmpty.classList.remove("hidden");

@@ -43,6 +43,10 @@
             <span class="home-nav__icon" aria-hidden="true">🧊</span>
             <span class="home-nav__label">What's In Our Fridge?</span>
           </button>
+          <button type="button" class="home-nav__btn" data-page="cupboard">
+            <span class="home-nav__icon" aria-hidden="true">🧺</span>
+            <span class="home-nav__label">What's In Our Cupboard?</span>
+          </button>
           <button type="button" class="home-nav__btn" data-page="leftovers">
             <span class="home-nav__icon" aria-hidden="true">🥡</span>
             <span class="home-nav__label">View Leftovers</span>
@@ -247,16 +251,16 @@
           <div class="page-header__actions">
             <button type="button" class="btn btn--back" data-page="home">← Home</button>
             <div class="page-header__action-group">
-              <button type="button" class="btn btn--ghost btn--small" data-page="add-batch" data-return="fridge">
+              <button type="button" id="fridge-add-batch" class="btn btn--ghost btn--small" data-page="add-batch" data-return="fridge">
                 Batch Add
               </button>
-              <button type="button" class="btn btn--primary btn--small" data-page="add" data-return="fridge">
+              <button type="button" id="fridge-add-item" class="btn btn--primary btn--small" data-page="add" data-return="fridge">
                 Add Item
               </button>
             </div>
           </div>
           <div class="page-header__title">
-            <h1>What's In Our Fridge?</h1>
+            <h1 id="fridge-page-title">What's In Our Fridge?</h1>
             <p class="page-header__subtitle" id="fridge-summary"></p>
           </div>
         </header>
@@ -289,8 +293,8 @@
         </div>
 
         <div id="fridge-empty" class="empty-state hidden">
-          <p class="empty-state__icon" aria-hidden="true">🧊</p>
-          <p class="empty-state__title">Nothing in the fridge yet</p>
+          <p id="fridge-empty-icon" class="empty-state__icon" aria-hidden="true">🧊</p>
+          <p id="fridge-empty-title" class="empty-state__title">Nothing in the fridge yet</p>
           <p class="empty-state__text">Tap Add Item to add your first leftover.</p>
         </div>
 
@@ -722,7 +726,7 @@
     <script src="cloud-storage.js?v=4"></script>
     <script src="kitchen-link.js?v=2"></script>
     <script src="notifications.js?v=3"></script>
-    <script src="recipe.js?v=3"></script>
-    <script src="app.js?v=19"></script>
+    <script src="recipe.js?v=4"></script>
+    <script src="app.js?v=20"></script>
   </body>
 </html>

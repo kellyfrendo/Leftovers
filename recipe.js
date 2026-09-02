@@ -27,25 +27,69 @@
       .filter((word) => word.length > 2 && !stop.has(word));
   }
 
+  const MATCH_THRESHOLD = 45;
+
+  // Items in the same group are related but not interchangeable.
+  const NOT_SAME_GROUPS = [
+    ["pepper", "pepperoni"],
+    ["milk", "coconut milk", "almond milk", "oat milk", "soy milk"],
+    ["butter", "peanut butter", "cocoa butter"],
+    ["cream", "sour cream", "ice cream"],
+    ["cheese", "cream cheese"],
+  ];
+
+  function wordSignature(text) {
+    return significantWords(text).slice().sort().join(" ");
+  }
+
+  function findGroupEntry(name, group) {
+    const norm = normalizeName(name);
+    const signature = wordSignature(name);
+
+    for (const entry of group) {
+      const entryNorm = normalizeName(entry);
+      if (entryNorm === norm) return entryNorm;
+      if (signature && wordSignature(entry) === signature) return entryNorm;
+    }
+
+    return null;
+  }
+
+  function isBlockedPair(ingredient, candidate) {
+    if (normalizeName(ingredient) === normalizeName(candidate)) return false;
+
+    for (const group of NOT_SAME_GROUPS) {
+      const ingredientEntry = findGroupEntry(ingredient, group);
+      const candidateEntry = findGroupEntry(candidate, group);
+      if (ingredientEntry && candidateEntry && ingredientEntry !== candidateEntry) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   function scoreMatch(ingredient, candidate) {
     const ingredientNorm = normalizeName(ingredient);
     const candidateNorm = normalizeName(candidate);
     if (!ingredientNorm || !candidateNorm) return 0;
+    if (isBlockedPair(ingredient, candidate)) return 0;
     if (candidateNorm === ingredientNorm) return 100;
-    if (candidateNorm.includes(ingredientNorm) || ingredientNorm.includes(candidateNorm)) return 80;
 
     const ingredientWords = significantWords(ingredient);
     const candidateWords = significantWords(candidate);
     if (!ingredientWords.length || !candidateWords.length) return 0;
 
-    let overlap = 0;
-    ingredientWords.forEach((word) => {
-      if (candidateWords.some((candidateWord) => candidateWord.includes(word) || word.includes(candidateWord))) {
-        overlap += 1;
-      }
-    });
+    const allRecipeWordsPresent = ingredientWords.every((word) => candidateWords.includes(word));
+    if (!allRecipeWordsPresent) {
+      const overlap = ingredientWords.filter((word) => candidateWords.includes(word)).length;
+      return overlap > 0 ? (overlap / ingredientWords.length) * 40 : 0;
+    }
 
-    return (overlap / ingredientWords.length) * 70;
+    const extraCandidateWords = candidateWords.filter((word) => !ingredientWords.includes(word));
+    if (extraCandidateWords.length > 0) return 0;
+
+    return 90;
   }
 
   function findFridgeMatch(ingredient, leftovers) {
@@ -68,7 +112,7 @@
       }
     });
 
-    return bestScore >= 45 ? best : null;
+    return bestScore >= MATCH_THRESHOLD ? best : null;
   }
 
   function settingsPresets() {
@@ -88,7 +132,7 @@
       }
     });
 
-    return bestScore >= 45 ? best : null;
+    return bestScore >= MATCH_THRESHOLD ? best : null;
   }
 
   function analyzeIngredients(ingredients) {
