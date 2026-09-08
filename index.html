@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#2b6cb0" />
     <title>Leftovers — Fridge Tracker</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=13" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -191,7 +191,7 @@
         <header class="page-header">
           <button type="button" class="btn btn--back" id="add-back">← Back</button>
           <div class="page-header__title">
-            <h1>Add To Fridge</h1>
+            <h1 id="add-page-title">Add To Fridge</h1>
           </div>
         </header>
 
@@ -241,7 +241,7 @@
 
             <p class="form__hint" id="eat-by-preview"></p>
 
-            <button type="submit" class="btn btn--primary">Add to fridge</button>
+            <button type="submit" id="add-submit" class="btn btn--primary">Add to fridge</button>
           </form>
         </section>
       </section>
@@ -347,30 +347,49 @@
           </div>
         </header>
 
-        <section class="panel">
-          <form id="shopping-form" class="form shopping-form">
-            <label class="field">
-              <span class="field__label">Add item</span>
-              <div class="shopping-form__row">
-                <input
-                  type="text"
-                  id="shopping-input"
-                  placeholder="e.g. Milk, eggs, bread"
-                  required
-                  maxlength="80"
-                />
-                <button type="submit" class="btn btn--primary">Add</button>
-              </div>
-            </label>
-          </form>
+        <p id="shopping-status" class="form__hint" role="status" aria-live="polite"></p>
 
-          <div id="shopping-empty" class="empty-state hidden">
-            <p class="empty-state__icon" aria-hidden="true">🛒</p>
-            <p class="empty-state__title">List is empty</p>
-            <p class="empty-state__text">Add items you need from the store.</p>
+        <div id="shopping-main">
+          <section class="panel">
+            <form id="shopping-form" class="form shopping-form">
+              <label class="field">
+                <span class="field__label">Add item</span>
+                <div class="shopping-form__row">
+                  <input
+                    type="text"
+                    id="shopping-input"
+                    placeholder="e.g. Milk, eggs, bread"
+                    required
+                    maxlength="80"
+                  />
+                  <button type="submit" class="btn btn--primary">Add</button>
+                </div>
+              </label>
+            </form>
+
+            <div id="shopping-empty" class="empty-state hidden">
+              <p class="empty-state__icon" aria-hidden="true">🛒</p>
+              <p class="empty-state__title">List is empty</p>
+              <p class="empty-state__text">Add items you need from the store.</p>
+            </div>
+
+            <ul id="shopping-list" class="shopping-list" aria-live="polite"></ul>
+
+            <div id="shopping-put-away-bar" class="shopping-put-away-bar hidden">
+              <p id="shopping-put-away-count" class="shopping-put-away-bar__count">0 purchased</p>
+              <button type="button" id="shopping-put-away-open" class="btn btn--primary">Add to kitchen</button>
+            </div>
+          </section>
+        </div>
+
+        <section id="shopping-put-away" class="panel shopping-put-away hidden" aria-labelledby="shopping-put-away-heading">
+          <h2 id="shopping-put-away-heading">Add to kitchen</h2>
+          <p class="shopping-put-away__intro">Choose quantity and where each purchased item should go.</p>
+          <ul id="shopping-put-away-list" class="shopping-put-away-list"></ul>
+          <div class="shopping-put-away__actions">
+            <button type="button" id="shopping-put-away-cancel" class="btn btn--ghost">Cancel</button>
+            <button type="button" id="shopping-put-away-confirm" class="btn btn--primary">Add to kitchen</button>
           </div>
-
-          <ul id="shopping-list" class="shopping-list" aria-live="polite"></ul>
         </section>
       </section>
 
@@ -727,6 +746,6 @@
     <script src="kitchen-link.js?v=2"></script>
     <script src="notifications.js?v=3"></script>
     <script src="recipe.js?v=4"></script>
-    <script src="app.js?v=21"></script>
+    <script src="app.js?v=25"></script>
   </body>
 </html>

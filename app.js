@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
     { id: "frozen-item", label: "Frozen item", days: 90 },
     { id: "canned-goods", label: "Canned goods", days: 90 },
     { id: "dried-goods", label: "Dried goods", days: 90 },
+    { id: "spices", label: "Spices", days: 365 },
     { id: "other", label: "Other", days: 7 },
   ],
   containers: [
@@ -66,6 +67,7 @@ const CATEGORY_ICONS = {
   "frozen-item": "❄️",
   "canned-goods": "🥫",
   "dried-goods": "🧺",
+  spices: "🧂",
   other: "📦",
 };
 
@@ -106,6 +108,10 @@ const CATEGORY_ADD_DEFAULTS = {
     container: "Original packaging",
     location: "Cupboard",
   },
+  spices: {
+    container: "Original packaging",
+    location: "Cupboard",
+  },
 };
 
 const LEGACY_CATEGORY_MAP = {
@@ -119,7 +125,7 @@ const CATEGORY_SCHEMA_VERSION = "2";
 
 const CATEGORY_DAYS_SCHEMA_VERSION = "2";
 
-const CATEGORY_BUILTIN_SCHEMA_VERSION = "2";
+const CATEGORY_BUILTIN_SCHEMA_VERSION = "3";
 
 const LEGACY_CONTAINER_MAP = {
   "Square tub": "Square tub (small)",
@@ -181,6 +187,9 @@ let currentPage = "home";
 let returnPage = "leftovers";
 let addFormDefaults = null;
 let leftoverAddMode = false;
+let editingItemId = null;
+let revealInventoryAfterEdit = false;
+let shoppingPutAwayDraft = null;
 let settingsEdit = { type: null, id: null };
 let batchRowCounter = 0;
 let pendingPresetAddPhoto = null;
@@ -204,6 +213,9 @@ const quantityInput = document.getElementById("quantity");
 const containerInput = document.getElementById("container");
 const locationInput = document.getElementById("location");
 const eatByPreview = document.getElementById("eat-by-preview");
+const addPageTitle = document.getElementById("add-page-title");
+const addHeading = document.getElementById("add-heading");
+const addSubmitBtn = document.getElementById("add-submit");
 const leftoverList = document.getElementById("leftover-list");
 const emptyState = document.getElementById("empty-state");
 const leftoversAddItemBtn = document.getElementById("leftovers-add-item");
@@ -225,6 +237,15 @@ const shoppingInput = document.getElementById("shopping-input");
 const shoppingList = document.getElementById("shopping-list");
 const shoppingEmpty = document.getElementById("shopping-empty");
 const shoppingExportBtn = document.getElementById("shopping-export");
+const shoppingStatus = document.getElementById("shopping-status");
+const shoppingMain = document.getElementById("shopping-main");
+const shoppingPutAwayBar = document.getElementById("shopping-put-away-bar");
+const shoppingPutAwayCount = document.getElementById("shopping-put-away-count");
+const shoppingPutAwayOpenBtn = document.getElementById("shopping-put-away-open");
+const shoppingPutAwayPanel = document.getElementById("shopping-put-away");
+const shoppingPutAwayList = document.getElementById("shopping-put-away-list");
+const shoppingPutAwayCancelBtn = document.getElementById("shopping-put-away-cancel");
+const shoppingPutAwayConfirmBtn = document.getElementById("shopping-put-away-confirm");
 const exportBackupBtn = document.getElementById("settings-export");
 const importBackupBtn = document.getElementById("settings-import");
 const importBackupFile = document.getElementById("settings-import-file");
@@ -303,6 +324,11 @@ async function init() {
 
   shoppingForm.addEventListener("submit", handleShoppingSubmit);
   shoppingExportBtn.addEventListener("click", exportShoppingList);
+  shoppingPutAwayOpenBtn?.addEventListener("click", openShoppingPutAway);
+  shoppingPutAwayCancelBtn?.addEventListener("click", closeShoppingPutAway);
+  shoppingPutAwayConfirmBtn?.addEventListener("click", confirmShoppingPutAway);
+  shoppingPutAwayList?.addEventListener("click", handleShoppingPutAwayClick);
+  shoppingPutAwayList?.addEventListener("change", handleShoppingPutAwayChange);
 
   fridgeShowAllBtn.addEventListener("click", () => {
     showAllFridgeCategories();
@@ -645,8 +671,49 @@ function migrateBuiltinCategories() {
 function openAddItemFromLeftovers() {
   returnPage = "leftovers";
   leftoverAddMode = true;
+  editingItemId = null;
   addFormDefaults = { ...LEFTOVERS_ADD_DEFAULTS };
   navigateTo("add");
+}
+
+function openEditItem(id) {
+  const item = leftovers.find((entry) => entry.id === id);
+  if (!item) return;
+
+  leftoverAddMode = false;
+  editingItemId = id;
+  returnPage = currentPage;
+  revealInventoryAfterEdit = isInventoryBrowsePage();
+  navigateTo("add");
+}
+
+function updateAddFormChrome() {
+  const editing = Boolean(editingItemId);
+  const title = editing ? "Edit Item" : "Add To Fridge";
+  if (addPageTitle) addPageTitle.textContent = title;
+  if (addHeading) addHeading.textContent = title;
+  if (addSubmitBtn) addSubmitBtn.textContent = editing ? "Save changes" : "Add to fridge";
+}
+
+function ensureSelectValue(select, value, label = value) {
+  if (!select || !value) return;
+  if (![...select.options].some((opt) => opt.value === value)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.appendChild(option);
+  }
+  select.value = value;
+}
+
+function fillAddFormFromItem(item) {
+  dateInput.value = item.dateAdded || todayString();
+  ensureSelectValue(categoryInput, item.category, getCategoryLabel(item.category));
+  descriptionInput.value = item.description || "";
+  ensureSelectValue(quantityInput, String(getItemQuantity(item)));
+  ensureSelectValue(containerInput, item.container);
+  ensureSelectValue(locationInput, item.location);
+  updateEatByPreview();
 }
 
 function loadSettings() {
@@ -708,6 +775,7 @@ function findPresetByDescription(text) {
 }
 
 function shouldSkipGroceryPreset(preset) {
+  if (editingItemId) return true;
   return leftoverAddMode && preset.categoryId !== "cooked-stuff";
 }
 
@@ -1272,6 +1340,10 @@ function isCupboardLocation(label) {
   return label.toLowerCase() === "cupboard";
 }
 
+function isFridgeLocation(label) {
+  return Boolean(label) && !isFreezerLocation(label) && !isCupboardLocation(label);
+}
+
 function sortLocationsWithFreezerLast(locations) {
   const cupboard = locations.filter(isCupboardLocation);
   const freezer = locations.filter((loc) => isFreezerLocation(loc) && !isCupboardLocation(loc));
@@ -1368,7 +1440,14 @@ function updateInventoryPageChrome() {
 
 function navigateTo(page) {
   currentPage = page;
-  if (page !== "add") leftoverAddMode = false;
+  if (page !== "add") {
+    leftoverAddMode = false;
+    editingItemId = null;
+    updateAddFormChrome();
+  }
+  if (page !== "shopping") {
+    shoppingPutAwayDraft = null;
+  }
 
   Object.entries(PAGES).forEach(([name, el]) => {
     const show = name === page || (page === "cupboard" && name === "fridge");
@@ -1378,13 +1457,23 @@ function navigateTo(page) {
   if (page === "leftovers") renderLeftovers();
   if (page === "fridge") {
     inventoryLocationScope = "fridge";
-    hideAllFridgeCategories();
+    if (revealInventoryAfterEdit) {
+      revealInventoryAfterEdit = false;
+      showAllFridgeCategories();
+    } else {
+      hideAllFridgeCategories();
+    }
     updateInventoryPageChrome();
     renderFridgeOverview();
   }
   if (page === "cupboard") {
     inventoryLocationScope = "cupboard";
-    hideAllFridgeCategories();
+    if (revealInventoryAfterEdit) {
+      revealInventoryAfterEdit = false;
+      showAllFridgeCategories();
+    } else {
+      hideAllFridgeCategories();
+    }
     updateInventoryPageChrome();
     renderFridgeOverview();
   }
@@ -1393,19 +1482,28 @@ function navigateTo(page) {
   if (page === "add") {
     populateDropdowns();
     updateDescriptionDatalist();
-    dateInput.value = todayString();
-    if (addFormDefaults) {
-      if (settings.categories.some((cat) => cat.id === addFormDefaults.categoryId)) {
-        categoryInput.value = addFormDefaults.categoryId;
+    const item = editingItemId ? leftovers.find((entry) => entry.id === editingItemId) : null;
+    if (item) {
+      fillAddFormFromItem(item);
+      updateAddFormChrome();
+      descriptionInput.focus();
+    } else {
+      editingItemId = null;
+      updateAddFormChrome();
+      dateInput.value = todayString();
+      if (addFormDefaults) {
+        if (settings.categories.some((cat) => cat.id === addFormDefaults.categoryId)) {
+          categoryInput.value = addFormDefaults.categoryId;
+        }
+        if (settings.locations.some((loc) => loc.label === addFormDefaults.location)) {
+          locationInput.value = addFormDefaults.location;
+        }
+        addFormDefaults = null;
       }
-      if (settings.locations.some((loc) => loc.label === addFormDefaults.location)) {
-        locationInput.value = addFormDefaults.location;
-      }
-      addFormDefaults = null;
+      applyCategoryDefaults(categoryInput.value);
+      updateEatByPreview();
+      descriptionInput.focus();
     }
-    applyCategoryDefaults(categoryInput.value);
-    updateEatByPreview();
-    descriptionInput.focus();
   }
   if (page === "add-batch") {
     populateDropdowns();
@@ -1669,28 +1767,52 @@ function addOrIncrementLeftover(itemData) {
   return item;
 }
 
+function updateLeftoverItem(id, itemData) {
+  const item = leftovers.find((entry) => entry.id === id);
+  if (!item) return null;
+
+  const trimmedDescription = String(itemData.description || "").trim();
+  if (!trimmedDescription || !itemData.dateAdded || !itemData.category) return null;
+
+  item.dateAdded = itemData.dateAdded;
+  item.description = trimmedDescription;
+  item.quantity = Math.max(1, Math.min(MAX_ITEM_QUANTITY, Number(itemData.quantity) || 1));
+  item.category = itemData.category;
+  item.container = itemData.container;
+  item.location = itemData.location;
+  item.eatBy = addDays(itemData.dateAdded, getCategoryDays(itemData.category));
+  return item;
+}
+
 function handleSubmit(event) {
   event.preventDefault();
 
-  const item = addOrIncrementLeftover({
+  const formData = {
     dateAdded: dateInput.value,
     description: descriptionInput.value,
     quantity: quantityInput.value,
     category: leftoverAddMode ? "cooked-stuff" : categoryInput.value,
     container: containerInput.value,
     location: locationInput.value,
-  });
+  };
+
+  const item = editingItemId
+    ? updateLeftoverItem(editingItemId, formData)
+    : addOrIncrementLeftover(formData);
 
   if (!item) return;
 
   saveLeftovers();
 
+  editingItemId = null;
+  leftoverAddMode = false;
   descriptionInput.value = "";
   quantityInput.value = "1";
   containerInput.selectedIndex = 0;
   locationInput.selectedIndex = 0;
   dateInput.value = todayString();
   updateEatByPreview();
+  updateAddFormChrome();
   navigateTo(returnPage);
 }
 
@@ -1885,14 +2007,24 @@ function renderLeftovers() {
             </dl>
             <p class="card__countdown">${statusMessage(item.eatBy)}</p>
           </div>
-          <button
-            type="button"
-            class="btn btn--ghost btn--icon card__reduce"
-            data-id="${item.id}"
-            aria-label="Reduce ${escapeHtml(item.description)} quantity by 1"
-          >
-            <span aria-hidden="true">➖</span>
-          </button>
+          <div class="card__actions">
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon card__reduce"
+              data-id="${item.id}"
+              aria-label="Reduce ${escapeHtml(item.description)} quantity by 1"
+            >
+              <span aria-hidden="true">➖</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon card__edit"
+              data-id="${item.id}"
+              aria-label="Edit ${escapeHtml(item.description)}"
+            >
+              <span aria-hidden="true">✏️</span>
+            </button>
+          </div>
         </li>
       `;
     })
@@ -1900,6 +2032,10 @@ function renderLeftovers() {
 
   leftoverList.querySelectorAll(".card__reduce").forEach((btn) => {
     btn.addEventListener("click", () => reduceLeftoverQuantity(btn.dataset.id));
+  });
+
+  leftoverList.querySelectorAll(".card__edit").forEach((btn) => {
+    btn.addEventListener("click", () => openEditItem(btn.dataset.id));
   });
 
   bindLocationSelects(leftoverList, ".card__location-select");
@@ -2041,6 +2177,14 @@ function renderFridgeOverview() {
                           </button>
                           <button
                             type="button"
+                            class="btn btn--ghost btn--icon location-item__edit"
+                            data-id="${item.id}"
+                            aria-label="Edit ${escapeHtml(item.description)}"
+                          >
+                            <span aria-hidden="true">✏️</span>
+                          </button>
+                          <button
+                            type="button"
                             class="btn btn--ghost btn--icon location-item__shopping"
                             data-id="${item.id}"
                             aria-label="Add ${escapeHtml(item.description)} to shopping list"
@@ -2076,6 +2220,10 @@ function renderFridgeOverview() {
 
   fridgeByLocation.querySelectorAll(".location-item__increase").forEach((btn) => {
     btn.addEventListener("click", () => increaseLeftoverQuantity(btn.dataset.id));
+  });
+
+  fridgeByLocation.querySelectorAll(".location-item__edit").forEach((btn) => {
+    btn.addEventListener("click", () => openEditItem(btn.dataset.id));
   });
 
   fridgeByLocation.querySelectorAll(".location-item__shopping").forEach((btn) => {
@@ -2577,6 +2725,7 @@ function handleShoppingSubmit(event) {
 
   addToShoppingList(text);
   shoppingInput.value = "";
+  setShoppingStatus("");
   renderShopping();
   shoppingInput.focus();
 }
@@ -2608,7 +2757,282 @@ function removeShoppingItem(id) {
   renderShopping();
 }
 
+function setShoppingStatus(message) {
+  if (shoppingStatus) shoppingStatus.textContent = message || "";
+}
+
+function getCheckedShoppingItems() {
+  return shoppingItems.filter((item) => item.checked);
+}
+
+function getLocationLabelById(id) {
+  return settings.locations.find((loc) => loc.id === id)?.label || null;
+}
+
+function firstLocationMatching(predicate, preferredId) {
+  const preferred = preferredId ? getLocationLabelById(preferredId) : null;
+  if (preferred && predicate(preferred)) return preferred;
+  return settings.locations.find((loc) => predicate(loc.label))?.label || settings.locations[0]?.label || "";
+}
+
+function destinationFromLocation(location) {
+  if (isCupboardLocation(location)) return "cupboard";
+  if (isFreezerLocation(location)) return "freezer";
+  return "fridge";
+}
+
+function defaultLocationForCategory(categoryId) {
+  const location = CATEGORY_ADD_DEFAULTS[categoryId]?.location;
+  if (location && settings.locations.some((loc) => loc.label === location)) return location;
+  return null;
+}
+
+function defaultCategoryId() {
+  return settings.categories.find((cat) => cat.id === "other")?.id || settings.categories[0]?.id || "";
+}
+
+function findPutAwayRow(shoppingId) {
+  return shoppingPutAwayDraft?.find((row) => row.shoppingId === shoppingId) || null;
+}
+
+function buildShoppingPutAwayDraft() {
+  return getCheckedShoppingItems().map((item) => {
+    const preset = findPresetByDescription(item.text);
+    const hasPreset = Boolean(preset && settings.categories.some((cat) => cat.id === preset.categoryId));
+    const categoryId = hasPreset ? preset.categoryId : defaultCategoryId();
+    const presetLocation =
+      hasPreset && preset.location && settings.locations.some((loc) => loc.label === preset.location)
+        ? preset.location
+        : null;
+    const inferredLocation = presetLocation || defaultLocationForCategory(categoryId);
+
+    return {
+      shoppingId: item.id,
+      text: item.text,
+      quantity: 1,
+      categoryId,
+      hasPreset,
+      presetLocation,
+      destination: destinationFromLocation(inferredLocation),
+    };
+  });
+}
+
+function getPutAwayContainer(categoryId) {
+  const defaults = CATEGORY_ADD_DEFAULTS[categoryId];
+  if (defaults?.container && settings.containers.some((item) => item.label === defaults.container)) {
+    return defaults.container;
+  }
+  if (settings.containers.some((item) => item.label === "Original packaging")) {
+    return "Original packaging";
+  }
+  return settings.containers[0]?.label || "Other";
+}
+
+function resolvePutAwayLocation(row) {
+  if (row.destination === "cupboard") {
+    if (row.presetLocation && isCupboardLocation(row.presetLocation)) return row.presetLocation;
+    return firstLocationMatching(isCupboardLocation, "cupboard");
+  }
+
+  if (row.destination === "freezer") {
+    if (row.presetLocation && isFreezerLocation(row.presetLocation) && !isCupboardLocation(row.presetLocation)) {
+      return row.presetLocation;
+    }
+    return firstLocationMatching(
+      (label) => isFreezerLocation(label) && !isCupboardLocation(label),
+      "freezer"
+    );
+  }
+
+  if (row.presetLocation && isFridgeLocation(row.presetLocation)) return row.presetLocation;
+  const categoryLocation = defaultLocationForCategory(row.categoryId);
+  if (categoryLocation && isFridgeLocation(categoryLocation)) return categoryLocation;
+  return firstLocationMatching(isFridgeLocation, "middle-shelf");
+}
+
+function isShoppingPutAwayOpen() {
+  return Array.isArray(shoppingPutAwayDraft);
+}
+
+function updateShoppingPutAwayBar() {
+  const checkedCount = getCheckedShoppingItems().length;
+  const showBar = !isShoppingPutAwayOpen() && checkedCount > 0;
+  shoppingPutAwayBar?.classList.toggle("hidden", !showBar);
+  if (shoppingPutAwayCount) {
+    shoppingPutAwayCount.textContent = checkedCount === 1 ? "1 purchased" : `${checkedCount} purchased`;
+  }
+}
+
+function updateShoppingPutAwayView() {
+  const open = isShoppingPutAwayOpen();
+  shoppingMain?.classList.toggle("hidden", open);
+  shoppingPutAwayPanel?.classList.toggle("hidden", !open);
+  if (open) renderShoppingPutAwayList();
+}
+
+function openShoppingPutAway() {
+  const draft = buildShoppingPutAwayDraft();
+  if (!draft.length) return;
+  shoppingPutAwayDraft = draft;
+  setShoppingStatus("");
+  updateShoppingPutAwayView();
+  updateShoppingPutAwayBar();
+}
+
+function closeShoppingPutAway() {
+  shoppingPutAwayDraft = null;
+  updateShoppingPutAwayView();
+  updateShoppingPutAwayBar();
+}
+
+function renderShoppingPutAwayList() {
+  if (!shoppingPutAwayList || !shoppingPutAwayDraft) return;
+
+  const destOptions = [
+    { id: "fridge", label: "Fridge" },
+    { id: "freezer", label: "Freezer" },
+    { id: "cupboard", label: "Cupboard" },
+  ];
+
+  shoppingPutAwayList.innerHTML = shoppingPutAwayDraft
+    .map((row) => {
+      const name = escapeHtml(row.text);
+      return `
+        <li class="shopping-put-away-item">
+          <h3 class="shopping-put-away-item__name">${name}</h3>
+          <div class="shopping-put-away-item__qty">
+            <span class="field__label">Quantity</span>
+            <div class="shopping-put-away-item__qty-controls">
+              <button
+                type="button"
+                class="btn btn--ghost btn--icon"
+                data-put-away-qty="-1"
+                data-id="${row.shoppingId}"
+                aria-label="Decrease quantity of ${name}"
+                ${row.quantity <= 1 ? "disabled" : ""}
+              >
+                <span aria-hidden="true">➖</span>
+              </button>
+              <span class="shopping-put-away-item__qty-value" aria-live="polite">${row.quantity}</span>
+              <button
+                type="button"
+                class="btn btn--ghost btn--icon"
+                data-put-away-qty="1"
+                data-id="${row.shoppingId}"
+                aria-label="Increase quantity of ${name}"
+                ${row.quantity >= MAX_ITEM_QUANTITY ? "disabled" : ""}
+              >
+                <span aria-hidden="true">➕</span>
+              </button>
+            </div>
+          </div>
+          <div class="shopping-put-away-item__dest" role="group" aria-label="Where to put ${name}">
+            ${destOptions
+              .map(
+                (dest) => `
+                  <button
+                    type="button"
+                    class="shopping-put-away-dest${row.destination === dest.id ? " shopping-put-away-dest--active" : ""}"
+                    data-put-away-dest="${dest.id}"
+                    data-id="${row.shoppingId}"
+                    aria-pressed="${row.destination === dest.id}"
+                  >
+                    ${dest.label}
+                  </button>
+                `
+              )
+              .join("")}
+          </div>
+          ${
+            row.hasPreset
+              ? ""
+              : `
+                <label class="field">
+                  <span class="field__label">Category</span>
+                  <select data-put-away-category data-id="${row.shoppingId}">
+                    ${categoryOptionsHtml(row.categoryId)}
+                  </select>
+                </label>
+              `
+          }
+        </li>
+      `;
+    })
+    .join("");
+}
+
+function handleShoppingPutAwayClick(event) {
+  const destBtn = event.target.closest("[data-put-away-dest]");
+  if (destBtn) {
+    const row = findPutAwayRow(destBtn.dataset.id);
+    if (!row) return;
+    row.destination = destBtn.dataset.putAwayDest;
+    renderShoppingPutAwayList();
+    return;
+  }
+
+  const qtyBtn = event.target.closest("[data-put-away-qty]");
+  if (!qtyBtn || qtyBtn.disabled) return;
+  const row = findPutAwayRow(qtyBtn.dataset.id);
+  if (!row) return;
+  const nextQty = row.quantity + Number(qtyBtn.dataset.putAwayQty);
+  row.quantity = Math.max(1, Math.min(MAX_ITEM_QUANTITY, nextQty));
+  renderShoppingPutAwayList();
+}
+
+function handleShoppingPutAwayChange(event) {
+  const select = event.target.closest("[data-put-away-category]");
+  if (!select) return;
+  const row = findPutAwayRow(select.dataset.id);
+  if (!row) return;
+  row.categoryId = select.value;
+  row.destination = destinationFromLocation(defaultLocationForCategory(row.categoryId));
+  renderShoppingPutAwayList();
+}
+
+function confirmShoppingPutAway() {
+  if (!shoppingPutAwayDraft?.length) return;
+
+  const idsToRemove = new Set();
+  let addedCount = 0;
+
+  shoppingPutAwayDraft.forEach((row) => {
+    if (!shoppingItems.some((item) => item.id === row.shoppingId)) return;
+    if (!row.categoryId) return;
+
+    const item = addOrIncrementLeftover({
+      dateAdded: todayString(),
+      description: row.text,
+      quantity: row.quantity,
+      category: row.categoryId,
+      container: getPutAwayContainer(row.categoryId),
+      location: resolvePutAwayLocation(row),
+    });
+    if (!item) return;
+
+    idsToRemove.add(row.shoppingId);
+    addedCount += 1;
+  });
+
+  if (!addedCount) return;
+
+  shoppingItems = shoppingItems.filter((item) => !idsToRemove.has(item.id));
+  shoppingPutAwayDraft = null;
+  saveLeftovers();
+  saveShopping();
+  setShoppingStatus(addedCount === 1 ? "Added 1 item to the kitchen." : `Added ${addedCount} items to the kitchen.`);
+  renderShopping();
+}
+
 function renderShopping() {
+  if (shoppingPutAwayDraft) {
+    shoppingPutAwayDraft = shoppingPutAwayDraft.filter((row) =>
+      shoppingItems.some((item) => item.id === row.shoppingId)
+    );
+    if (!shoppingPutAwayDraft.length) shoppingPutAwayDraft = null;
+  }
+
   const hasItems = shoppingItems.length > 0;
   shoppingEmpty.classList.toggle("hidden", hasItems);
   shoppingList.classList.toggle("hidden", !hasItems);
@@ -2616,30 +3040,34 @@ function renderShopping() {
 
   if (!hasItems) {
     shoppingList.innerHTML = "";
-    return;
+  } else {
+    shoppingList.innerHTML = shoppingItems
+      .map(
+        (item) => `
+        <li class="shopping-item ${item.checked ? "shopping-item--checked" : ""}">
+          <label class="shopping-item__label">
+            <input type="checkbox" data-id="${item.id}" ${item.checked ? "checked" : ""} />
+            <span>${escapeHtml(item.text)}</span>
+          </label>
+          <button type="button" class="btn btn--ghost btn--icon shopping-item__remove" data-id="${item.id}" aria-label="Remove ${escapeHtml(item.text)}">
+            <span aria-hidden="true">🗑️</span>
+          </button>
+        </li>
+      `
+      )
+      .join("");
+
+    shoppingList.querySelectorAll('input[type="checkbox"]').forEach((box) => {
+      box.addEventListener("change", () => toggleShoppingItem(box.dataset.id));
+    });
+
+    shoppingList.querySelectorAll(".shopping-item__remove").forEach((btn) => {
+      btn.addEventListener("click", () => removeShoppingItem(btn.dataset.id));
+    });
   }
 
-  shoppingList.innerHTML = shoppingItems
-    .map(
-      (item) => `
-      <li class="shopping-item ${item.checked ? "shopping-item--checked" : ""}">
-        <label class="shopping-item__label">
-          <input type="checkbox" data-id="${item.id}" ${item.checked ? "checked" : ""} />
-          <span>${escapeHtml(item.text)}</span>
-        </label>
-        <button type="button" class="btn btn--ghost btn--small shopping-item__remove" data-id="${item.id}" aria-label="Remove ${escapeHtml(item.text)}">Remove</button>
-      </li>
-    `
-    )
-    .join("");
-
-  shoppingList.querySelectorAll('input[type="checkbox"]').forEach((box) => {
-    box.addEventListener("change", () => toggleShoppingItem(box.dataset.id));
-  });
-
-  shoppingList.querySelectorAll(".shopping-item__remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeShoppingItem(btn.dataset.id));
-  });
+  updateShoppingPutAwayView();
+  updateShoppingPutAwayBar();
 }
 
 function escapeHtml(text) {
