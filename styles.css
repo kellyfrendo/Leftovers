@@ -334,6 +334,22 @@ body {
   max-width: 8rem;
 }
 
+.field__with-action {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.field__with-action input {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.field__with-action .btn {
+  flex-shrink: 0;
+}
+
 .item-qty {
   font-weight: 600;
   color: var(--text-muted);

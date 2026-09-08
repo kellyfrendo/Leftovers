@@ -207,6 +207,7 @@ const batchAddFromShoppingBtn = document.getElementById("batch-add-from-shopping
 const batchAddSubmitBtn = document.getElementById("batch-add-submit");
 const batchAddStatus = document.getElementById("batch-add-status");
 const dateInput = document.getElementById("date");
+const dateTodayBtn = document.getElementById("date-today");
 const categoryInput = document.getElementById("category");
 const descriptionInput = document.getElementById("description");
 const quantityInput = document.getElementById("quantity");
@@ -318,6 +319,7 @@ async function init() {
   batchAddFromShoppingBtn.addEventListener("click", fillBatchRowsFromShoppingList);
   batchDateInput.addEventListener("change", updateBatchAddStatus);
   dateInput.addEventListener("change", updateEatByPreview);
+  dateTodayBtn?.addEventListener("click", setAddDateToToday);
   categoryInput.addEventListener("change", handleCategoryChange);
   descriptionInput.addEventListener("input", () => applyPresetForDescription(descriptionInput.value));
   descriptionInput.addEventListener("change", () => applyPresetForDescription(descriptionInput.value));
@@ -693,6 +695,12 @@ function updateAddFormChrome() {
   if (addPageTitle) addPageTitle.textContent = title;
   if (addHeading) addHeading.textContent = title;
   if (addSubmitBtn) addSubmitBtn.textContent = editing ? "Save changes" : "Add to fridge";
+  dateTodayBtn?.classList.toggle("hidden", !editing);
+}
+
+function setAddDateToToday() {
+  dateInput.value = todayString();
+  updateEatByPreview();
 }
 
 function ensureSelectValue(select, value, label = value) {
