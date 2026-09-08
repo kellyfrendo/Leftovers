@@ -180,6 +180,7 @@ let inventoryLocationScope = "fridge";
 let currentPage = "home";
 let returnPage = "leftovers";
 let addFormDefaults = null;
+let leftoverAddMode = false;
 let settingsEdit = { type: null, id: null };
 let batchRowCounter = 0;
 let pendingPresetAddPhoto = null;
@@ -643,6 +644,7 @@ function migrateBuiltinCategories() {
 
 function openAddItemFromLeftovers() {
   returnPage = "leftovers";
+  leftoverAddMode = true;
   addFormDefaults = { ...LEFTOVERS_ADD_DEFAULTS };
   navigateTo("add");
 }
@@ -705,9 +707,14 @@ function findPresetByDescription(text) {
   return settings.presets.find((preset) => preset.description.toLowerCase() === normalized);
 }
 
+function shouldSkipGroceryPreset(preset) {
+  return leftoverAddMode && preset.categoryId !== "cooked-stuff";
+}
+
 function applyPresetForDescription(text) {
   const preset = findPresetByDescription(text);
   if (!preset) return;
+  if (shouldSkipGroceryPreset(preset)) return;
 
   if (settings.categories.some((cat) => cat.id === preset.categoryId)) {
     categoryInput.value = preset.categoryId;
@@ -1361,6 +1368,7 @@ function updateInventoryPageChrome() {
 
 function navigateTo(page) {
   currentPage = page;
+  if (page !== "add") leftoverAddMode = false;
 
   Object.entries(PAGES).forEach(([name, el]) => {
     const show = name === page || (page === "cupboard" && name === "fridge");
@@ -1632,17 +1640,21 @@ function normalizeDescription(description) {
   return String(description || "").trim().toLowerCase();
 }
 
-function findLeftoverByDescription(description) {
+function findLeftoverByDescription(description, category) {
   const normalized = normalizeDescription(description);
   if (!normalized) return null;
-  return leftovers.find((item) => normalizeDescription(item.description) === normalized) || null;
+  return leftovers.find((item) => {
+    if (normalizeDescription(item.description) !== normalized) return false;
+    if (category && item.category !== category) return false;
+    return true;
+  }) || null;
 }
 
 function addOrIncrementLeftover(itemData) {
   const trimmedDescription = itemData.description.trim();
   if (!trimmedDescription) return null;
 
-  const existing = findLeftoverByDescription(trimmedDescription);
+  const existing = findLeftoverByDescription(trimmedDescription, itemData.category);
   const addQty = Math.max(1, Math.min(MAX_ITEM_QUANTITY, Number(itemData.quantity) || 1));
 
   if (existing) {
@@ -1664,7 +1676,7 @@ function handleSubmit(event) {
     dateAdded: dateInput.value,
     description: descriptionInput.value,
     quantity: quantityInput.value,
-    category: categoryInput.value,
+    category: leftoverAddMode ? "cooked-stuff" : categoryInput.value,
     container: containerInput.value,
     location: locationInput.value,
   });
