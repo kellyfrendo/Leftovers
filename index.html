@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#2b6cb0" />
     <title>Leftovers — Fridge Tracker</title>
     <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="styles.css?v=14" />
+    <link rel="stylesheet" href="styles.css?v=16" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -55,6 +55,10 @@
             <span class="home-nav__icon" aria-hidden="true">🛒</span>
             <span class="home-nav__label">Shopping List</span>
           </button>
+          <button type="button" class="home-nav__btn" data-page="search">
+            <span class="home-nav__icon" aria-hidden="true">🔍</span>
+            <span class="home-nav__label">Search</span>
+          </button>
           <button type="button" class="home-nav__btn" data-page="recipe">
             <span class="home-nav__icon" aria-hidden="true">📖</span>
             <span class="home-nav__label">Check Recipe</span>
@@ -63,7 +67,7 @@
             <span class="home-nav__icon" aria-hidden="true">🛍️</span>
             <span class="home-nav__label">Add Groceries</span>
           </button>
-          <button type="button" class="home-nav__btn home-nav__btn--settings" data-page="settings">
+          <button type="button" class="home-nav__btn" data-page="settings">
             <span class="home-nav__icon" aria-hidden="true">⚙️</span>
             <span class="home-nav__label">Settings</span>
           </button>
@@ -395,6 +399,54 @@
             <button type="button" id="shopping-put-away-cancel" class="btn btn--ghost">Cancel</button>
             <button type="button" id="shopping-put-away-confirm" class="btn btn--primary">Add to kitchen</button>
           </div>
+        </section>
+      </section>
+
+      <section id="page-search" class="page hidden">
+        <header class="page-header">
+          <button type="button" class="btn btn--back" data-page="home">← Home</button>
+          <div class="page-header__title">
+            <h1>Search</h1>
+            <p class="page-header__subtitle">Find an item in the fridge, freezer, or cupboard.</p>
+          </div>
+        </header>
+
+        <section class="panel panel--form" aria-labelledby="search-form-heading">
+          <h2 id="search-form-heading" class="visually-hidden">Search kitchen</h2>
+          <form id="search-form" class="form">
+            <label class="field">
+              <span class="field__label">Item</span>
+              <div class="shopping-form__row">
+                <input
+                  type="search"
+                  id="search-input"
+                  placeholder="e.g. Milk, rice, leftovers"
+                  maxlength="80"
+                  autocomplete="off"
+                />
+                <button type="submit" class="btn btn--primary">Search</button>
+              </div>
+            </label>
+
+            <fieldset class="search-locations">
+              <legend class="field__label">Locations</legend>
+              <div class="search-locations__toolbar">
+                <button type="button" id="search-locations-all" class="btn btn--ghost btn--small">All</button>
+                <button type="button" id="search-locations-none" class="btn btn--ghost btn--small">Clear</button>
+              </div>
+              <div id="search-location-chips" class="search-locations__chips" role="group" aria-label="Choose locations"></div>
+            </fieldset>
+          </form>
+
+          <p id="search-status" class="form__hint" role="status" aria-live="polite"></p>
+
+          <div id="search-empty" class="empty-state">
+            <p class="empty-state__icon" aria-hidden="true">🔍</p>
+            <p id="search-empty-title" class="empty-state__title">Type a name to search</p>
+            <p id="search-empty-text" class="empty-state__text">Choose one or more locations, then enter an item.</p>
+          </div>
+
+          <ul id="search-results" class="search-results hidden" aria-live="polite"></ul>
         </section>
       </section>
 
@@ -751,6 +803,6 @@
     <script src="kitchen-link.js?v=2"></script>
     <script src="notifications.js?v=3"></script>
     <script src="recipe.js?v=4"></script>
-    <script src="app.js?v=26"></script>
+    <script src="app.js?v=28"></script>
   </body>
 </html>

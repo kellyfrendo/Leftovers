@@ -153,6 +153,7 @@ const PAGES = {
   "add-photo": document.getElementById("page-add-photo"),
   fridge: document.getElementById("page-fridge"),
   shopping: document.getElementById("page-shopping"),
+  search: document.getElementById("page-search"),
   recipe: document.getElementById("page-recipe"),
   settings: document.getElementById("page-settings"),
   "settings-categories": document.getElementById("page-settings-categories"),
@@ -190,6 +191,7 @@ let leftoverAddMode = false;
 let editingItemId = null;
 let revealInventoryAfterEdit = false;
 let shoppingPutAwayDraft = null;
+let searchSelectedLocations = new Set();
 let settingsEdit = { type: null, id: null };
 let batchRowCounter = 0;
 let pendingPresetAddPhoto = null;
@@ -247,6 +249,16 @@ const shoppingPutAwayPanel = document.getElementById("shopping-put-away");
 const shoppingPutAwayList = document.getElementById("shopping-put-away-list");
 const shoppingPutAwayCancelBtn = document.getElementById("shopping-put-away-cancel");
 const shoppingPutAwayConfirmBtn = document.getElementById("shopping-put-away-confirm");
+const searchForm = document.getElementById("search-form");
+const searchInput = document.getElementById("search-input");
+const searchLocationChips = document.getElementById("search-location-chips");
+const searchLocationsAllBtn = document.getElementById("search-locations-all");
+const searchLocationsNoneBtn = document.getElementById("search-locations-none");
+const searchStatus = document.getElementById("search-status");
+const searchEmpty = document.getElementById("search-empty");
+const searchEmptyTitle = document.getElementById("search-empty-title");
+const searchEmptyText = document.getElementById("search-empty-text");
+const searchResults = document.getElementById("search-results");
 const exportBackupBtn = document.getElementById("settings-export");
 const importBackupBtn = document.getElementById("settings-import");
 const importBackupFile = document.getElementById("settings-import-file");
@@ -331,6 +343,15 @@ async function init() {
   shoppingPutAwayConfirmBtn?.addEventListener("click", confirmShoppingPutAway);
   shoppingPutAwayList?.addEventListener("click", handleShoppingPutAwayClick);
   shoppingPutAwayList?.addEventListener("change", handleShoppingPutAwayChange);
+
+  searchForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    renderSearch();
+  });
+  searchInput?.addEventListener("input", renderSearch);
+  searchLocationsAllBtn?.addEventListener("click", selectAllSearchLocations);
+  searchLocationsNoneBtn?.addEventListener("click", clearSearchLocations);
+  searchLocationChips?.addEventListener("click", handleSearchLocationChipClick);
 
   fridgeShowAllBtn.addEventListener("click", () => {
     showAllFridgeCategories();
@@ -533,6 +554,7 @@ async function reloadFromCloud(kitchen) {
   if (currentPage === "leftovers") renderLeftovers();
   if (isInventoryBrowsePage()) renderFridgeOverview();
   if (currentPage === "shopping") renderShopping();
+  if (currentPage === "search") renderSearch();
   if (SETTINGS_DETAIL_PAGES.has(currentPage)) renderSettingsPage(currentPage);
 }
 
@@ -782,9 +804,10 @@ function findPresetByDescription(text) {
   return settings.presets.find((preset) => preset.description.toLowerCase() === normalized);
 }
 
-function shouldSkipGroceryPreset(preset) {
+function shouldSkipGroceryPreset(preset, categoryId = categoryInput.value) {
   if (editingItemId) return true;
-  return leftoverAddMode && preset.categoryId !== "cooked-stuff";
+  const keepingCookedStuff = leftoverAddMode || categoryId === "cooked-stuff";
+  return keepingCookedStuff && preset.categoryId !== "cooked-stuff";
 }
 
 function applyPresetForDescription(text) {
@@ -843,6 +866,7 @@ function applyPresetToBatchRow(row) {
   const locationSelect = row.querySelector(".batch-row__location");
   const preset = findPresetByDescription(descriptionInputEl.value);
   if (!preset) return;
+  if (shouldSkipGroceryPreset(preset, categorySelect.value)) return;
 
   if (settings.categories.some((cat) => cat.id === preset.categoryId)) {
     categorySelect.value = preset.categoryId;
@@ -1486,6 +1510,7 @@ function navigateTo(page) {
     renderFridgeOverview();
   }
   if (page === "shopping") renderShopping();
+  if (page === "search") openSearchPage();
   if (SETTINGS_DETAIL_PAGES.has(page)) renderSettingsPage(page);
   if (page === "add") {
     populateDropdowns();
@@ -1596,6 +1621,7 @@ function applyBackup(data) {
   if (currentPage === "leftovers") renderLeftovers();
   if (isInventoryBrowsePage()) renderFridgeOverview();
   if (currentPage === "shopping") renderShopping();
+  if (currentPage === "search") renderSearch();
   if (SETTINGS_DETAIL_PAGES.has(currentPage)) renderSettingsPage(currentPage);
   window.LeftoversCloud?.saveNow().catch(() => {});
 }
@@ -1746,13 +1772,17 @@ function normalizeDescription(description) {
   return String(description || "").trim().toLowerCase();
 }
 
-function findLeftoverByDescription(description, category) {
+function findMatchingLeftover({ description, category, location }) {
   const normalized = normalizeDescription(description);
-  if (!normalized) return null;
+  const categoryId = String(category || "").trim();
+  const locationLabel = String(location || "").trim();
+  if (!normalized || !categoryId || !locationLabel) return null;
   return leftovers.find((item) => {
-    if (normalizeDescription(item.description) !== normalized) return false;
-    if (category && item.category !== category) return false;
-    return true;
+    return (
+      normalizeDescription(item.description) === normalized &&
+      item.category === categoryId &&
+      String(item.location || "").trim() === locationLabel
+    );
   }) || null;
 }
 
@@ -1760,7 +1790,11 @@ function addOrIncrementLeftover(itemData) {
   const trimmedDescription = itemData.description.trim();
   if (!trimmedDescription) return null;
 
-  const existing = findLeftoverByDescription(trimmedDescription, itemData.category);
+  const existing = findMatchingLeftover({
+    description: trimmedDescription,
+    category: itemData.category,
+    location: itemData.location,
+  });
   const addQty = Math.max(1, Math.min(MAX_ITEM_QUANTITY, Number(itemData.quantity) || 1));
 
   if (existing) {
@@ -3076,6 +3110,128 @@ function renderShopping() {
 
   updateShoppingPutAwayView();
   updateShoppingPutAwayBar();
+}
+
+function getSearchLocationLabels() {
+  return getOrderedLocationLabels();
+}
+
+function selectAllSearchLocations() {
+  searchSelectedLocations = new Set(getSearchLocationLabels());
+  renderSearchLocationChips();
+  renderSearch();
+}
+
+function clearSearchLocations() {
+  searchSelectedLocations = new Set();
+  renderSearchLocationChips();
+  renderSearch();
+}
+
+function handleSearchLocationChipClick(event) {
+  const btn = event.target.closest("[data-search-location]");
+  if (!btn) return;
+  const location = btn.dataset.searchLocation;
+  if (searchSelectedLocations.has(location)) {
+    searchSelectedLocations.delete(location);
+  } else {
+    searchSelectedLocations.add(location);
+  }
+  renderSearchLocationChips();
+  renderSearch();
+}
+
+function renderSearchLocationChips() {
+  if (!searchLocationChips) return;
+  const labels = getSearchLocationLabels();
+  searchLocationChips.innerHTML = labels
+    .map((label) => {
+      const selected = searchSelectedLocations.has(label);
+      return `
+        <button
+          type="button"
+          class="search-location-chip${selected ? " search-location-chip--active" : ""}"
+          data-search-location="${escapeHtml(label)}"
+          aria-pressed="${selected}"
+        >
+          ${escapeHtml(label)}
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function getSearchMatches() {
+  const query = normalizeDescription(searchInput?.value);
+  if (!query || searchSelectedLocations.size === 0) return [];
+  return leftovers
+    .filter((item) => {
+      if (!searchSelectedLocations.has(item.location)) return false;
+      return normalizeDescription(item.description).includes(query);
+    })
+    .sort((a, b) => {
+      const loc = String(a.location || "").localeCompare(String(b.location || ""));
+      if (loc) return loc;
+      return normalizeDescription(a.description).localeCompare(normalizeDescription(b.description));
+    });
+}
+
+function openSearchPage() {
+  searchSelectedLocations = new Set(getSearchLocationLabels());
+  if (searchInput) searchInput.value = "";
+  renderSearchLocationChips();
+  renderSearch();
+  searchInput?.focus();
+}
+
+function renderSearch() {
+  if (!searchResults || !searchEmpty) return;
+
+  const query = normalizeDescription(searchInput?.value);
+  const hasLocations = searchSelectedLocations.size > 0;
+  const matches = getSearchMatches();
+  const showResults = Boolean(query) && hasLocations && matches.length > 0;
+
+  if (!hasLocations) {
+    if (searchEmptyTitle) searchEmptyTitle.textContent = "Choose a location";
+    if (searchEmptyText) searchEmptyText.textContent = "Select one or more locations to search in.";
+  } else if (!query) {
+    if (searchEmptyTitle) searchEmptyTitle.textContent = "Type a name to search";
+    if (searchEmptyText) searchEmptyText.textContent = "Choose one or more locations, then enter an item.";
+  } else {
+    if (searchEmptyTitle) searchEmptyTitle.textContent = "No matching items";
+    if (searchEmptyText) searchEmptyText.textContent = "Try a different name or include more locations.";
+  }
+
+  searchEmpty.classList.toggle("hidden", showResults);
+  searchResults.classList.toggle("hidden", !showResults);
+
+  if (searchStatus) {
+    if (!query || !hasLocations) {
+      searchStatus.textContent = "";
+    } else if (matches.length === 1) {
+      searchStatus.textContent = "1 match";
+    } else {
+      searchStatus.textContent = `${matches.length} matches`;
+    }
+  }
+
+  if (!showResults) {
+    searchResults.innerHTML = "";
+    return;
+  }
+
+  searchResults.innerHTML = matches
+    .map((item) => {
+      const status = getStatus(item.eatBy);
+      return `
+        <li class="search-result search-result--${status}">
+          <p class="search-result__name">${formatItemDescription(item)}</p>
+          <p class="search-result__meta">${escapeHtml(getCategoryLabel(item.category))} · ${escapeHtml(item.location || "")} · eat by ${formatDisplayDate(item.eatBy)}</p>
+        </li>
+      `;
+    })
+    .join("");
 }
 
 function escapeHtml(text) {
