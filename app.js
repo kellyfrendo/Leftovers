@@ -1471,6 +1471,7 @@ function updateInventoryPageChrome() {
 }
 
 function navigateTo(page) {
+  const fromPage = currentPage;
   currentPage = page;
   if (page !== "add") {
     leftoverAddMode = false;
@@ -1510,7 +1511,14 @@ function navigateTo(page) {
     renderFridgeOverview();
   }
   if (page === "shopping") renderShopping();
-  if (page === "search") openSearchPage();
+  if (page === "search") {
+    if (fromPage === "add") {
+      renderSearchLocationChips();
+      renderSearch();
+    } else {
+      openSearchPage();
+    }
+  }
   if (SETTINGS_DETAIL_PAGES.has(page)) renderSettingsPage(page);
   if (page === "add") {
     populateDropdowns();
@@ -1886,12 +1894,17 @@ function handleBatchSubmit(event) {
   navigateTo(returnPage);
 }
 
+function refreshLeftoverViews() {
+  if (currentPage === "leftovers") renderLeftovers();
+  if (isInventoryBrowsePage()) renderFridgeOverview();
+  if (currentPage === "search") renderSearch();
+  if (currentPage === "settings-inventory") renderInventory();
+}
+
 function removeLeftover(id) {
   leftovers = leftovers.filter((item) => item.id !== id);
   saveLeftovers();
-  if (currentPage === "leftovers") renderLeftovers();
-  if (isInventoryBrowsePage()) renderFridgeOverview();
-  if (currentPage === "settings-inventory") renderInventory();
+  refreshLeftoverViews();
 }
 
 function setLeftoverQuantity(id, quantity) {
@@ -1908,8 +1921,7 @@ function setLeftoverQuantity(id, quantity) {
 
   item.quantity = qty;
   saveLeftovers();
-  if (currentPage === "leftovers") renderLeftovers();
-  if (isInventoryBrowsePage()) renderFridgeOverview();
+  refreshLeftoverViews();
 }
 
 function reduceLeftoverQuantity(id) {
@@ -1928,8 +1940,7 @@ function reduceLeftoverQuantity(id) {
 
   item.quantity = nextQty;
   saveLeftovers();
-  if (currentPage === "leftovers") renderLeftovers();
-  if (isInventoryBrowsePage()) renderFridgeOverview();
+  refreshLeftoverViews();
 }
 
 function increaseLeftoverQuantity(id) {
@@ -1941,8 +1952,7 @@ function increaseLeftoverQuantity(id) {
 
   item.quantity = nextQty;
   saveLeftovers();
-  if (currentPage === "leftovers") renderLeftovers();
-  if (isInventoryBrowsePage()) renderFridgeOverview();
+  refreshLeftoverViews();
 }
 
 function relocateLeftover(id, newLocation) {
@@ -1950,8 +1960,7 @@ function relocateLeftover(id, newLocation) {
   if (!item || item.location === newLocation) return;
   item.location = newLocation;
   saveLeftovers();
-  if (currentPage === "leftovers") renderLeftovers();
-  if (isInventoryBrowsePage()) renderFridgeOverview();
+  refreshLeftoverViews();
 }
 
 function locationSelectHtml(itemId, currentLocation, className) {
@@ -1968,6 +1977,94 @@ function locationSelectHtml(itemId, currentLocation, className) {
 function bindLocationSelects(container, selector) {
   container.querySelectorAll(selector).forEach((select) => {
     select.addEventListener("change", () => relocateLeftover(select.dataset.id, select.value));
+  });
+}
+
+function locationItemHtml(item, locationFallback, { showLocation = false } = {}) {
+  const status = getStatus(item.eatBy);
+  const location = item.location || locationFallback || "";
+  const locationHint = showLocation && location
+    ? ` <span class="location-item__place">${escapeHtml(location)}</span>`
+    : "";
+  return `
+    <li class="location-item location-item--${status}" data-id="${escapeHtml(item.id)}">
+      <details class="location-item__details">
+        <summary class="location-item__summary">
+          <span class="location-item__name">${formatFridgeItemLabel(item)}${locationHint}</span>
+          <span class="location-item__chevron" aria-hidden="true">▼</span>
+        </summary>
+        <div class="location-item__body">
+          <span class="location-item__detail">${escapeHtml(item.container)} · eat by ${formatDisplayDate(item.eatBy)} (${getItemQuantity(item)})</span>
+          <label class="location-item__move">
+            <span class="location-item__move-label">Move to</span>
+            ${locationSelectHtml(item.id, location, "location-item__select")}
+          </label>
+          <div class="location-item__actions">
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon location-item__reduce"
+              data-id="${item.id}"
+              aria-label="Reduce ${escapeHtml(item.description)} quantity by 1"
+            >
+              <span aria-hidden="true">➖</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon location-item__increase"
+              data-id="${item.id}"
+              aria-label="Increase ${escapeHtml(item.description)} quantity by 1"
+              ${getItemQuantity(item) >= MAX_ITEM_QUANTITY ? "disabled" : ""}
+            >
+              <span aria-hidden="true">➕</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon location-item__edit"
+              data-id="${item.id}"
+              aria-label="Edit ${escapeHtml(item.description)}"
+            >
+              <span aria-hidden="true">✏️</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon location-item__shopping"
+              data-id="${item.id}"
+              aria-label="Add ${escapeHtml(item.description)} to shopping list"
+            >
+              <span aria-hidden="true">🛒</span>
+            </button>
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon location-item__delete"
+              data-id="${item.id}"
+              aria-label="Remove ${escapeHtml(item.description)} from fridge"
+            >
+              <span aria-hidden="true">🗑️</span>
+            </button>
+          </div>
+        </div>
+      </details>
+    </li>
+  `;
+}
+
+function bindLocationItemActions(container) {
+  if (!container) return;
+  bindLocationSelects(container, ".location-item__select");
+  container.querySelectorAll(".location-item__reduce").forEach((btn) => {
+    btn.addEventListener("click", () => reduceLeftoverQuantity(btn.dataset.id));
+  });
+  container.querySelectorAll(".location-item__increase").forEach((btn) => {
+    btn.addEventListener("click", () => increaseLeftoverQuantity(btn.dataset.id));
+  });
+  container.querySelectorAll(".location-item__edit").forEach((btn) => {
+    btn.addEventListener("click", () => openEditItem(btn.dataset.id));
+  });
+  container.querySelectorAll(".location-item__shopping").forEach((btn) => {
+    btn.addEventListener("click", () => addLeftoverToShoppingList(btn.dataset.id));
+  });
+  container.querySelectorAll(".location-item__delete").forEach((btn) => {
+    btn.addEventListener("click", () => removeLeftover(btn.dataset.id));
   });
 }
 
@@ -2183,98 +2280,14 @@ function renderFridgeOverview() {
         <section class="panel location-group">
           <h2 class="location-group__title">${escapeHtml(location)}</h2>
           <ul class="location-group__list">
-            ${items
-              .map((item) => {
-                const status = getStatus(item.eatBy);
-                return `
-                  <li class="location-item location-item--${status}">
-                    <details class="location-item__details">
-                      <summary class="location-item__summary">
-                        <span class="location-item__name">${formatFridgeItemLabel(item)}</span>
-                        <span class="location-item__chevron" aria-hidden="true">▼</span>
-                      </summary>
-                      <div class="location-item__body">
-                        <span class="location-item__detail">${escapeHtml(item.container)} · eat by ${formatDisplayDate(item.eatBy)} (${getItemQuantity(item)})</span>
-                        <label class="location-item__move">
-                          <span class="location-item__move-label">Move to</span>
-                          ${locationSelectHtml(item.id, item.location || location, "location-item__select")}
-                        </label>
-                        <div class="location-item__actions">
-                          <button
-                            type="button"
-                            class="btn btn--ghost btn--icon location-item__reduce"
-                            data-id="${item.id}"
-                            aria-label="Reduce ${escapeHtml(item.description)} quantity by 1"
-                          >
-                            <span aria-hidden="true">➖</span>
-                          </button>
-                          <button
-                            type="button"
-                            class="btn btn--ghost btn--icon location-item__increase"
-                            data-id="${item.id}"
-                            aria-label="Increase ${escapeHtml(item.description)} quantity by 1"
-                            ${getItemQuantity(item) >= MAX_ITEM_QUANTITY ? "disabled" : ""}
-                          >
-                            <span aria-hidden="true">➕</span>
-                          </button>
-                          <button
-                            type="button"
-                            class="btn btn--ghost btn--icon location-item__edit"
-                            data-id="${item.id}"
-                            aria-label="Edit ${escapeHtml(item.description)}"
-                          >
-                            <span aria-hidden="true">✏️</span>
-                          </button>
-                          <button
-                            type="button"
-                            class="btn btn--ghost btn--icon location-item__shopping"
-                            data-id="${item.id}"
-                            aria-label="Add ${escapeHtml(item.description)} to shopping list"
-                          >
-                            <span aria-hidden="true">🛒</span>
-                          </button>
-                          <button
-                            type="button"
-                            class="btn btn--ghost btn--icon location-item__delete"
-                            data-id="${item.id}"
-                            aria-label="Remove ${escapeHtml(item.description)} from fridge"
-                          >
-                            <span aria-hidden="true">🗑️</span>
-                          </button>
-                        </div>
-                      </div>
-                    </details>
-                  </li>
-                `;
-              })
-              .join("")}
+            ${items.map((item) => locationItemHtml(item, location)).join("")}
           </ul>
         </section>
       `;
     })
     .join("");
 
-  bindLocationSelects(fridgeByLocation, ".location-item__select");
-
-  fridgeByLocation.querySelectorAll(".location-item__reduce").forEach((btn) => {
-    btn.addEventListener("click", () => reduceLeftoverQuantity(btn.dataset.id));
-  });
-
-  fridgeByLocation.querySelectorAll(".location-item__increase").forEach((btn) => {
-    btn.addEventListener("click", () => increaseLeftoverQuantity(btn.dataset.id));
-  });
-
-  fridgeByLocation.querySelectorAll(".location-item__edit").forEach((btn) => {
-    btn.addEventListener("click", () => openEditItem(btn.dataset.id));
-  });
-
-  fridgeByLocation.querySelectorAll(".location-item__shopping").forEach((btn) => {
-    btn.addEventListener("click", () => addLeftoverToShoppingList(btn.dataset.id));
-  });
-
-  fridgeByLocation.querySelectorAll(".location-item__delete").forEach((btn) => {
-    btn.addEventListener("click", () => removeLeftover(btn.dataset.id));
-  });
+  bindLocationItemActions(fridgeByLocation);
 }
 
 function renderSettingsPage(page) {
@@ -3191,6 +3204,11 @@ function renderSearch() {
   const hasLocations = searchSelectedLocations.size > 0;
   const matches = getSearchMatches();
   const showResults = Boolean(query) && hasLocations && matches.length > 0;
+  const openIds = new Set(
+    [...searchResults.querySelectorAll(".location-item__details[open]")]
+      .map((el) => el.closest("[data-id]")?.dataset.id)
+      .filter(Boolean)
+  );
 
   if (!hasLocations) {
     if (searchEmptyTitle) searchEmptyTitle.textContent = "Choose a location";
@@ -3222,16 +3240,14 @@ function renderSearch() {
   }
 
   searchResults.innerHTML = matches
-    .map((item) => {
-      const status = getStatus(item.eatBy);
-      return `
-        <li class="search-result search-result--${status}">
-          <p class="search-result__name">${formatItemDescription(item)}</p>
-          <p class="search-result__meta">${escapeHtml(getCategoryLabel(item.category))} · ${escapeHtml(item.location || "")} · eat by ${formatDisplayDate(item.eatBy)}</p>
-        </li>
-      `;
-    })
+    .map((item) => locationItemHtml(item, item.location, { showLocation: true }))
     .join("");
+  bindLocationItemActions(searchResults);
+  searchResults.querySelectorAll(".location-item").forEach((li) => {
+    if (openIds.has(li.dataset.id)) {
+      li.querySelector(".location-item__details")?.setAttribute("open", "");
+    }
+  });
 }
 
 function escapeHtml(text) {
